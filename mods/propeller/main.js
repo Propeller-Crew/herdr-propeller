@@ -21,6 +21,7 @@ const DAY = 24 * 3600 * 1000;
 const RANK = { blocked: 0, done: 1, working: 2, idle: 3 };
 const SLEEP_RANK = 4;
 const BAR = 70;
+const CLEAN_ENV = `for v in $(env | sed -nE 's/^(CLAUDECODE|CLAUDE_PID|CLAUDE_CODE_[A-Za-z0-9_]+)=.*/\\1/p' | grep -vE '^CLAUDE_CODE_(USE|SKIP|DISABLE|ENABLE|MAX|OAUTH|CLIENT|API)_'); do unset "$v"; done;`;
 const ACTIVE = new Set(["blocked", "done", "working"]);
 
 const statePath = () => `${home()}/.config/herdr-app/data/propeller-state.json`;
@@ -98,7 +99,10 @@ export default class Propeller extends View {
       } else if (prev && prev.shell !== g.pid) {
         // The shell under this terminal changed and Claude isn't running: the core
         // lost the program (reboot, crash, logout) and gave it a fresh shell.
-        await hc(["send", addr, `claude --resume ${prev.session}`]);
+        // Unset a parent Claude session's markers first (same line as shepherdr's clean-env.js):
+        // a core started from inside Claude Code hands them to every terminal, and Claude then
+        // stops saving the conversation.
+        await hc(["send", addr, `${CLEAN_ENV} claude --resume ${prev.session}`]);
         prev.shell = g.pid;
       } else if (prev) {
         // Same shell, Claude gone: the person quit it on purpose.
