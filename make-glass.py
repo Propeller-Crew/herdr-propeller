@@ -10,12 +10,12 @@ d["background"] = "#0a171a"
 d["theme"] = "propeller-dusk"
 d["terminal_opacity"] = 0
 d["colors"] = {
-    "chrome": "#18303499",      # sidebar cards and bars
-    "background": "#13282c99",  # terminal cards
+    "chrome": "#12272b99",      # sidebar cards and bars
+    "background": "#0e21248f",  # terminal cards
     "surface": "#ffffff0d",
     "hover": "#ffffff1a",
     "selected": "#ffffff21",
-    "border": "#ffffff22",
+    "border": "#ffffff1f",
     "canvas": "#00000000",
     "popover": "#122b30f2",     # menus stay nearly solid so they read over anything
     "foreground": "#b3bdd6",
