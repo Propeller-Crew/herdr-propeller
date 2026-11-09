@@ -1,0 +1,16 @@
+# herdr config for Artem (symlinked from ~/.config/herdr/config.toml)
+[ui]
+# Agents that need you first, then working, then done.
+agent_panel_sort = "priority"
+status_indicators = "symbols"
+tab_bar_right = [
+  { type = "command", command = "~/code/herdr-propeller/limits.py", interval_seconds = 30, timeout_seconds = 3 },
+  { type = "datetime", format = "%H:%M" },
+]
+tab_bar_right_separator = " · "
+
+[ui.sidebar.agents.rows_by_agent]
+claude = [["state_icon", "workspace", "tab"], ["terminal_title_stripped"]]
+
+[ui.toast]
+delivery = "system"
