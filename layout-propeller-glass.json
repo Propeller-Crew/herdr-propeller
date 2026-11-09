@@ -210,7 +210,7 @@
       "gap": 12
     }
   ],
-  "background": "#0f2226",
+  "background": "#0a171a",
   "terminal_padding": [
     16,
     14
@@ -226,13 +226,17 @@
   "terminal_opacity": 0,
   "theme": "propeller-dusk",
   "colors": {
-    "chrome": "#0e2a2e8c",
-    "background": "#0b1f2380",
-    "surface": "#ffffff14",
-    "hover": "#ffffff24",
-    "selected": "#ffffff2e",
-    "border": "#ffffff30",
+    "chrome": "#0b1e2199",
+    "background": "#08171a8c",
+    "surface": "#ffffff0d",
+    "hover": "#ffffff1a",
+    "selected": "#ffffff21",
+    "border": "#ffffff1c",
     "canvas": "#00000000",
-    "popover": "#16343af2"
+    "popover": "#122b30f2",
+    "foreground": "#b3bdd6",
+    "muted": "#8590a8",
+    "dim": "#5f6a80",
+    "accent": "#d89470"
   }
 }
