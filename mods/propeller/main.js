@@ -5,21 +5,24 @@
 //    conversation each terminal had (~/.claude/sessions/<pid>.json) and, when the
 //    terminal's shell changes under us without Claude, type `claude --resume <id>`.
 // 2. Sleeping spaces. A space with no agent activity and no visit for a day has
-//    its tabs settled and sinks to the bottom; it wakes when an agent there
-//    needs you, starts working, or you open it.
-// 3. Attention order. Spaces sort blocked > done > working > idle > sleeping,
-//    keeping their current order inside each group.
-// 4. Claude subscription limits (5 h and weekly) from ~/.claude/rate-limits.json,
+//    its tabs settled and moves into a folded "Сплять" folder of the space-folders
+//    mod (jankeesvw/herdr-space-folders); it goes back to its own folder when an
+//    agent there needs you, starts working, or you open it.
+// 3. Claude subscription limits (5 h and weekly) from ~/.claude/rate-limits.json,
 //    which our Claude status line writes on every turn.
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, terminals, hc, exec, theme, run, home } from "herdr";
+import { spaces, terminals, hc, exec, theme, run, home, shared, setShared } from "herdr";
 import * as fs from "fs/promises";
 
 const DAY = 24 * 3600 * 1000;
-const RANK = { blocked: 0, done: 1, working: 2, idle: 3 };
-const SLEEP_RANK = 4;
+// The space-folders mod keeps each machine's folders in shared("space-folders")[machine ?? ""]
+// and in ~/.config/herdr-space-folders.json on that machine: { list: [{id, name, folded}], of: {spaceId: folderId}, at }.
+const SLEEP = { id: "propeller-sleep", name: "Сплять", folded: true, color: "ansi4" };
+const RULES = "__rules__"; // "the space had no folder of its own": its folder came from rules
+const FOLDERS_FILE = "~/.config/herdr-space-folders.json";
+const localId = (s) => (s.machine ? s.id.slice(s.machine.length + 1) : s.id);
 const BAR = 70;
 const CLEAN_ENV = `for v in $(env | sed -nE 's/^(CLAUDECODE|CLAUDE_PID|CLAUDE_CODE_[A-Za-z0-9_]+)=.*/\\1/p' | grep -vE '^CLAUDE_CODE_(USE|SKIP|DISABLE|ENABLE|MAX|OAUTH|CLIENT|API)_'); do unset "$v"; done;`;
 const ACTIVE = new Set(["blocked", "done", "working"]);
@@ -37,10 +40,10 @@ export default class Propeller extends View {
   init(_props, cx) {
     // seen: space id -> ms of last activity or visit; claude: terminal -> {shell, session, cwd};
     // settled: space ids whose tabs we put away (we only bring back what we put away).
+    // settled: space id -> the folder it had before sleeping (RULES: none of its own).
     this.state = { seen: {}, claude: {}, settled: {} };
     this.saved = "";
     this.limits = null;
-    this.open = false;
     this.busy = false;
     cx.spawn(async (cx) => {
       try { this.state = { ...this.state, ...JSON.parse(await fs.readFile(statePath(), "utf8")) }; } catch {}
@@ -64,7 +67,7 @@ export default class Propeller extends View {
     try {
       await this.trackClaude();
       this.trackActivity();
-      this.sleepAndSort();
+      this.sleep();
       await this.save();
     } catch (e) {
       console.log("propeller tick:", e?.message ?? e);
@@ -114,7 +117,7 @@ export default class Propeller extends View {
     if (live.size) for (const addr of Object.keys(this.state.claude)) if (!live.has(addr)) delete this.state.claude[addr];
   }
 
-  // --- 2 and 3. Sleeping and attention order -------------------------------------
+  // --- 2. Sleeping -------------------------------------------------------------
   trackActivity() {
     const now = Date.now();
     for (const s of spaces()) {
@@ -130,43 +133,53 @@ export default class Propeller extends View {
     return !ACTIVE.has(s.status) && !s.active && Date.now() - (this.state.seen[s.id] ?? Date.now()) > DAY;
   }
 
-  rank(s) {
-    return this.sleeping(s) ? SLEEP_RANK : RANK[s.status] ?? RANK.idle;
-  }
-
-  sleepAndSort() {
-    for (const s of spaces()) {
-      if (this.sleeping(s)) {
-        for (const t of s.tabs) if (!t.settled) run("tab.settle", { id: t.id });
-        this.state.settled[s.id] = true;
-      } else if (this.state.settled[s.id]) {
-        for (const t of s.tabs) if (t.settled) run("tab.unsettle", { id: t.id });
-        delete this.state.settled[s.id];
-      }
-    }
-    // One move at a time, re-reading the order after each: space.move stays inside
-    // its machine's block, so each machine sorts on its own.
-    for (let i = 0; i < 30; i++) {
-      const move = this.nextMove();
-      if (!move) break;
-      run("space.move", move);
-    }
-  }
-
-  nextMove() {
-    const groups = new Map();
+  sleep() {
+    const all = shared("space-folders");
+    if (!all) return; // the folders list hasn't loaded yet
+    const byMachine = new Map();
     for (const s of spaces()) {
       const k = s.machine ?? "";
-      if (!groups.has(k)) groups.set(k, []);
-      groups.get(k).push(s);
+      if (!byMachine.has(k)) byMachine.set(k, []);
+      byMachine.get(k).push(s);
     }
-    for (const list of groups.values()) {
-      const want = list.map((s, i) => ({ s, i })).sort((a, b) => this.rank(a.s) - this.rank(b.s) || a.i - b.i).map((x) => x.s);
-      for (let i = 0; i < list.length; i++) {
-        if (list[i].id !== want[i].id) return { id: want[i].id, index: list[i].index };
+    let next = all;
+    for (const [k, list] of byMachine) {
+      const cur = all[k];
+      if (!cur) continue;
+      const data = { list: [...(cur.list ?? [])], of: { ...(cur.of ?? {}) } };
+      let changed = false;
+      for (const s of list) {
+        const id = localId(s);
+        if (this.sleeping(s)) {
+          if (data.of[id] !== SLEEP.id) {
+            this.state.settled[s.id] = id in data.of ? data.of[id] : RULES;
+            data.of[id] = SLEEP.id;
+            changed = true;
+          }
+          for (const t of s.tabs) if (!t.settled) run("tab.settle", { id: t.id });
+        } else if (data.of[id] === SLEEP.id) {
+          const prev = this.state.settled[s.id];
+          if (prev === undefined || prev === RULES) delete data.of[id];
+          else data.of[id] = prev;
+          delete this.state.settled[s.id];
+          for (const t of s.tabs) if (t.settled) run("tab.unsettle", { id: t.id });
+          changed = true;
+        }
+      }
+      const asleep = Object.values(data.of).includes(SLEEP.id);
+      const has = data.list.some((f) => f.id === SLEEP.id);
+      if (asleep && !has) { data.list.push({ ...SLEEP }); changed = true; }
+      if (!asleep && has) { data.list = data.list.filter((f) => f.id !== SLEEP.id); changed = true; }
+      if (changed) {
+        const saved = { list: data.list, of: data.of, at: Date.now() };
+        next = { ...next, [k]: saved };
+        // The same write the space-folders mod does, on the machine the spaces live on.
+        exec("sh", ["-c", `mkdir -p ~/.config && printf '%s\\n' "$1" > ${FOLDERS_FILE}.tmp && mv ${FOLDERS_FILE}.tmp ${FOLDERS_FILE}`, "sh", JSON.stringify(saved)], { on: k || null })
+          .catch(() => null);
       }
     }
-    return null;
+    if (next !== all) setShared("space-folders", next);
+    for (const id of Object.keys(this.state.settled)) if (!spaces().some((s) => s.id === id)) delete this.state.settled[id];
   }
 
   async save() {
@@ -177,12 +190,7 @@ export default class Propeller extends View {
     this.saved = text;
   }
 
-  wake(s) {
-    this.state.seen[s.id] = Date.now();
-    run("space.select", { id: s.id });
-  }
-
-  // --- 4. The card ---------------------------------------------------------------
+  // --- 3. The card ---------------------------------------------------------------
   limitRow(t, label, w) {
     if (!w || w.used_percentage == null) return null;
     const expired = w.resets_at && w.resets_at * 1000 < Date.now();
@@ -198,21 +206,10 @@ export default class Propeller extends View {
 
   render() {
     const t = theme();
-    const sleepers = spaces().filter((s) => this.sleeping(s));
     const lim = this.limits ?? {};
     const rows = [this.limitRow(t, "5 год", lim.five_hour), this.limitRow(t, "Тиждень", lim.seven_day)].filter(Boolean);
-    return v_flex().id("propeller").size_full().px(14).py(8).gap(6).bg(t.chrome).border_t(1).border_color(t.border)
+    return v_flex().id("propeller").size_full().rounded(13).overflow_hidden().px(14).py(8).gap(6).bg(t.chrome)
       .child(div().text_size(11).text_color(t.dim).child("Ліміти Claude"))
-      .children(rows.length ? rows : [div().text_size(11.5).text_color(t.dim).child("ще нема даних")])
-      .child(h_flex().id("sleep-toggle").mt(2).gap(6).items_center().text_size(11.5)
-        .text_color(sleepers.length ? t.muted : t.dim)
-        .hover((s) => s.text_color(t.foreground))
-        .on_click((_e, cx) => { this.open = !this.open; cx.notify(); })
-        .child(`${this.open ? "▾" : "▸"} Сплять · ${sleepers.length}`))
-      .when(this.open, (el) => el.child(v_flex().id("sleepers").gap(2).overflow_y_scrollbar()
-        .children(sleepers.map((s) => h_flex().id(`sl-${s.id}`).px(6).py(2).rounded(4).gap(6).text_size(11.5)
-          .text_color(t.muted).hover((x) => x.bg(t.hover).text_color(t.foreground))
-          .on_click((_e, cx) => { this.wake(s); cx.notify(); })
-          .child(div().truncate().child(`${s.machine ? s.machine + " · " : ""}${s.name}`))))));
+      .children(rows.length ? rows : [div().text_size(11.5).text_color(t.dim).child("ще нема даних")]);
   }
 }
