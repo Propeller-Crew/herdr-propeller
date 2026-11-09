@@ -1,0 +1,241 @@
+{
+  "id": "root",
+  "type": "row",
+  "children": [
+    {
+      "id": "sidebar",
+      "type": "column",
+      "children": [
+        {
+          "id": "brand",
+          "type": "block",
+          "content": {
+            "mod": "islands-workspace-chrome"
+          },
+          "size": {
+            "px": 38
+          },
+          "window_drag": true,
+          "radius": 14,
+          "border": {
+            "width": 1,
+            "color": "border"
+          }
+        },
+        {
+          "id": "sidebar-lists",
+          "type": "column",
+          "children": [
+            {
+              "id": "spaces",
+              "type": "block",
+              "content": {
+                "mod": "space-folders"
+              },
+              "size": {
+                "weight": 1
+              },
+              "min": 90,
+              "radius": 14,
+              "border": {
+                "width": 1,
+                "color": "border"
+              }
+            },
+            {
+              "id": "agents",
+              "type": "block",
+              "content": {
+                "mod": "islands-agents"
+              },
+              "size": {
+                "weight": 1
+              },
+              "min": 90,
+              "radius": 14,
+              "border": {
+                "width": 1,
+                "color": "border"
+              }
+            }
+          ],
+          "gap": 12
+        },
+        {
+          "id": "propeller",
+          "type": "block",
+          "size": {
+            "px": 84
+          },
+          "min": 60,
+          "max": 320,
+          "content": {
+            "mod": "propeller"
+          },
+          "radius": 14,
+          "border": {
+            "width": 1,
+            "color": "border"
+          }
+        },
+        {
+          "id": "sidebar-footer",
+          "type": "block",
+          "content": {
+            "mod": "islands-workspace-chrome",
+            "props": {
+              "footer": true
+            }
+          },
+          "size": {
+            "px": 72
+          },
+          "radius": 14,
+          "border": {
+            "width": 1,
+            "color": "border"
+          }
+        }
+      ],
+      "size": {
+        "px": 268
+      },
+      "min": 44,
+      "max": 480,
+      "resizable": false,
+      "gap": 12
+    },
+    {
+      "id": "work",
+      "type": "column",
+      "children": [
+        {
+          "id": "tabs",
+          "type": "block",
+          "content": {
+            "mod": "islands-tabs"
+          },
+          "size": {
+            "px": 38
+          },
+          "window_drag": true
+        },
+        {
+          "id": "work-body",
+          "type": "row",
+          "children": [
+            {
+              "id": "main",
+              "type": "block",
+              "content": {
+                "tab": "active",
+                "pane": {
+                  "header": {
+                    "content": {
+                      "mod": "islands-pane"
+                    },
+                    "reveal": "always",
+                    "height": 30,
+                    "position": "top"
+                  },
+                  "background": "background",
+                  "border": {
+                    "width": 1,
+                    "color": "border"
+                  },
+                  "focus": {
+                    "width": 1,
+                    "color": "border"
+                  },
+                  "radius": 14,
+                  "gap": 12,
+                  "lone": true
+                }
+              }
+            },
+            {
+              "id": "panel",
+              "type": "column",
+              "children": [
+                {
+                  "id": "panel-body",
+                  "type": "stack",
+                  "children": [
+                    {
+                      "id": "files",
+                      "type": "block",
+                      "content": {
+                        "mod": "files"
+                      }
+                    },
+                    {
+                      "id": "changes",
+                      "type": "block",
+                      "content": {
+                        "mod": "changes"
+                      }
+                    }
+                  ],
+                  "active": "files"
+                }
+              ],
+              "size": {
+                "px": 368
+              },
+              "min": 280,
+              "max": 900,
+              "hidden": true
+            }
+          ],
+          "padding": 0,
+          "gap": 12
+        },
+        {
+          "id": "status",
+          "type": "block",
+          "content": {
+            "mod": "islands-workspace-status"
+          },
+          "size": {
+            "px": 32
+          },
+          "radius": 14,
+          "border": {
+            "width": 1,
+            "color": "border"
+          }
+        }
+      ],
+      "resizable": false,
+      "gap": 12
+    }
+  ],
+  "background": {
+    "image": "backgrounds/glass-dusk.png",
+    "fit": "cover"
+  },
+  "terminal_padding": [
+    16,
+    14
+  ],
+  "titlebar": "none",
+  "traffic_lights": [
+    26,
+    24
+  ],
+  "preview": "layouts/islands.svg",
+  "padding": 12,
+  "gap": 12,
+  "terminal_opacity": 0,
+  "theme": "propeller-dusk",
+  "colors": {
+    "chrome": "#1a1c2a99",
+    "background": "#1418247a",
+    "surface": "#ffffff14",
+    "hover": "#ffffff24",
+    "selected": "#ffffff2e",
+    "border": "#ffffff30",
+    "canvas": "#00000000",
+    "popover": "#262a3af2"
+  }
+}

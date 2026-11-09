@@ -30,4 +30,10 @@ copy "$HERE/mods/islands-tabs"
 copy "$EXT/herdr-sim/mods/herdr-sim"
 copy "$EXT/herdr-sim/mods/herdr-sim-screen"
 for t in "$HERE"/themes/*.json; do rm -f "$APP/themes/$(basename "$t")"; cp "$t" "$APP/themes/"; done
+# Layouts: ours and the glass variant built from it, plus the glass wallpaper.
+python3 "$HERE/make-glass.py"
+mkdir -p "$APP/backgrounds"
+cp "$HERE/backgrounds/"*.png "$APP/backgrounds/"
+cp "$HERE/layout-propeller.json" "$APP/layouts/propeller.json"
+cp "$HERE/layout-propeller-glass.json" "$APP/layouts/propeller-glass.json"
 echo ok
