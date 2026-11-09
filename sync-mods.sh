@@ -22,5 +22,5 @@ for m in "$EXT"/herdr-mods/islands/mods/islands-*; do copy "$m"; done
 # herdr-sim as a pane only (its tab-bar clone is left out).
 copy "$EXT/herdr-sim/mods/herdr-sim"
 copy "$EXT/herdr-sim/mods/herdr-sim-screen"
-for t in "$HERE"/themes/*.json; do ln -sfn "$t" "$APP/themes/$(basename "$t")"; done
+for t in "$HERE"/themes/*.json; do rm -f "$APP/themes/$(basename "$t")"; cp "$t" "$APP/themes/"; done
 echo ok
