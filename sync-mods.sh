@@ -14,11 +14,13 @@ sed -i '' 's/return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)/ret
 grep -q 'rounded(13).overflow_hidden().bg(t.chrome).text_size(13)' "$HERE/mods/space-folders/main.js" || { echo "space-folders patch did not apply: upstream changed, look at main.js root" >&2; exit 1; }
 
 link() { ln -sfn "$1" "$APP/mods/$(basename "$1")"; }
+# Herdr doesn't load a mod's icons (svg/png) through a symlinked folder, so mods with icons are copied.
+copy() { rm -rf "$APP/mods/$(basename "$1")"; cp -R "$1" "$APP/mods/$(basename "$1")"; }
 link "$HERE/mods/propeller"
-link "$HERE/mods/space-folders"
-for m in "$EXT"/herdr-mods/islands/mods/islands-*; do link "$m"; done
+copy "$HERE/mods/space-folders"
+for m in "$EXT"/herdr-mods/islands/mods/islands-*; do copy "$m"; done
 # herdr-sim as a pane only (its tab-bar clone is left out).
-link "$EXT/herdr-sim/mods/herdr-sim"
-link "$EXT/herdr-sim/mods/herdr-sim-screen"
+copy "$EXT/herdr-sim/mods/herdr-sim"
+copy "$EXT/herdr-sim/mods/herdr-sim-screen"
 for t in "$HERE"/themes/*.json; do ln -sfn "$t" "$APP/themes/$(basename "$t")"; done
 echo ok
