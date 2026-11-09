@@ -22,18 +22,22 @@ if not os.path.exists(bg):
     im.save(bg, optimize=True)
 
 d = json.load(open(os.path.join(HERE, "layout-propeller.json")))
-d["background"] = {"image": "backgrounds/glass-dusk.png", "fit": "cover"}
+# Herdr can't make its window see-through (no transparency or blur option in 0.1.x), so the glass
+# shows the desktop's own wallpaper, blurred and tinted teal: backgrounds/glass-desktop.png,
+# made by make-glass-desktop.py. Falls back to the plain blurred blobs.
+desk = os.path.join(HERE, "backgrounds", "glass-desktop.png")
+d["background"] = {"image": "backgrounds/glass-desktop.png" if os.path.exists(desk) else "backgrounds/glass-dusk.png", "fit": "cover"}
 d["theme"] = "propeller-dusk"
 d["terminal_opacity"] = 0
 d["colors"] = {
-    "chrome": "#1a1c2a99",      # sidebar cards and bars
-    "background": "#1418247a",  # terminal cards
+    "chrome": "#0e2a2e8c",      # sidebar cards and bars
+    "background": "#0b1f2380",  # terminal cards
     "surface": "#ffffff14",
     "hover": "#ffffff24",
     "selected": "#ffffff2e",
     "border": "#ffffff30",
     "canvas": "#00000000",
-    "popover": "#262a3af2",     # menus stay nearly solid so they read over anything
+    "popover": "#16343af2",     # menus stay nearly solid so they read over anything
 }
 d["preview"] = "layouts/islands.svg"
 json.dump(d, open(os.path.join(HERE, "layout-propeller-glass.json"), "w"), indent=2)

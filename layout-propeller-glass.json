@@ -211,7 +211,7 @@
     }
   ],
   "background": {
-    "image": "backgrounds/glass-dusk.png",
+    "image": "backgrounds/glass-desktop.png",
     "fit": "cover"
   },
   "terminal_padding": [
@@ -229,13 +229,13 @@
   "terminal_opacity": 0,
   "theme": "propeller-dusk",
   "colors": {
-    "chrome": "#1a1c2a99",
-    "background": "#1418247a",
+    "chrome": "#0e2a2e8c",
+    "background": "#0b1f2380",
     "surface": "#ffffff14",
     "hover": "#ffffff24",
     "selected": "#ffffff2e",
     "border": "#ffffff30",
     "canvas": "#00000000",
-    "popover": "#262a3af2"
+    "popover": "#16343af2"
   }
 }
