@@ -13,7 +13,7 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, terminals, hc, exec, theme, run, home, shared, setShared } from "herdr";
+import { spaces, terminals, panes, hc, exec, theme, run, home, shared, setShared } from "herdr";
 import * as fs from "fs/promises";
 
 const DAY = 24 * 3600 * 1000;
@@ -28,6 +28,8 @@ const CLEAN_ENV = `for v in $(env | sed -nE 's/^(CLAUDECODE|CLAUDE_PID|CLAUDE_CO
 const ACTIVE = new Set(["blocked", "done", "working"]);
 
 const statePath = () => `${home()}/.config/herdr-app/data/propeller-state.json`;
+// Written by import-cmux.py: { resume: {terminal: session}, seen: {space: ms}, at }.
+const importPath = () => `${home()}/.config/herdr-app/data/propeller-import.json`;
 const machineOf = (addr) => (addr.includes("/") ? addr.split("/")[0] : null);
 
 function left(ts) {
@@ -41,7 +43,10 @@ export default class Propeller extends View {
     // seen: space id -> ms of last activity or visit; claude: terminal -> {shell, session, cwd};
     // settled: space ids whose tabs we put away (we only bring back what we put away).
     // settled: space id -> the folder it had before sleeping (RULES: none of its own).
-    this.state = { seen: {}, claude: {}, settled: {} };
+    // pending: terminal -> Claude conversation to fork into it the first time you open it
+    // (from import-cmux.py); quiet: space id -> ms before which tab changes don't count as
+    // activity (the import itself made them).
+    this.state = { seen: {}, claude: {}, settled: {}, pending: {}, quiet: {} };
     this.saved = "";
     this.limits = null;
     this.busy = false;
@@ -51,6 +56,7 @@ export default class Propeller extends View {
       await this.readLimits();
       cx.notify();
     });
+    cx.timer.every(1000, (cx) => { if (Object.keys(this.state.pending).length) this.wake(); });
     cx.timer.every(15000, (cx) => cx.spawn(async (cx) => { await this.tick(); cx.notify(); }));
     cx.timer.every(30000, (cx) => cx.spawn(async (cx) => { await this.readLimits(); cx.notify(); }));
   }
@@ -65,15 +71,37 @@ export default class Propeller extends View {
     if (this.busy) return;
     this.busy = true;
     try {
+      await this.takeImport();
       await this.trackClaude();
       this.trackActivity();
-      this.sleep();
+      await this.sleep();
       await this.save();
     } catch (e) {
       console.log("propeller tick:", e?.message ?? e);
     } finally {
       this.busy = false;
     }
+  }
+
+  // --- 0. Spaces brought over from cmux ------------------------------------------
+  async takeImport() {
+    let imp;
+    try { imp = JSON.parse(await fs.readFile(importPath(), "utf8")); } catch { return; }
+    Object.assign(this.state.pending, imp.resume ?? {});
+    for (const [id, ms] of Object.entries(imp.seen ?? {})) {
+      this.state.seen[id] = ms || Date.now();
+      this.state.quiet[id] = (imp.at ?? Date.now()) + 60000;
+    }
+    await fs.unlink(importPath());
+  }
+
+  // The focused terminal waits for its Claude: start it there, a fork of the cmux one.
+  wake() {
+    const p = panes().find((p) => p.focused && p.terminal && this.state.pending[p.terminal]);
+    if (!p) return;
+    const session = this.state.pending[p.terminal];
+    delete this.state.pending[p.terminal];
+    hc(["send", p.terminal, `${CLEAN_ENV} claude --resume ${session} --fork-session`]).catch(() => null);
   }
 
   // --- 1. Claude after a reboot -------------------------------------------------
@@ -121,21 +149,24 @@ export default class Propeller extends View {
   trackActivity() {
     const now = Date.now();
     for (const s of spaces()) {
-      const changed = Math.max(0, ...s.tabs.map((t) => t.changed_at ?? 0));
+      const quiet = this.state.quiet[s.id] ?? 0;
+      const changed = Math.max(0, ...s.tabs.map((t) => (t.changed_at ?? 0) > quiet ? t.changed_at : 0));
       const last = this.state.seen[s.id] ?? now;
       this.state.seen[s.id] = Math.max(last, changed, s.active || ACTIVE.has(s.status) ? now : 0);
     }
     const ids = new Set(spaces().map((s) => s.id));
     for (const id of Object.keys(this.state.seen)) if (!ids.has(id)) delete this.state.seen[id];
+    for (const id of Object.keys(this.state.quiet)) if (!ids.has(id) || this.state.quiet[id] < now - DAY) delete this.state.quiet[id];
+    const live = new Set(terminals().map((t) => t.address));
+    if (live.size) for (const t of Object.keys(this.state.pending)) if (!live.has(t)) delete this.state.pending[t];
   }
 
   sleeping(s) {
     return !ACTIVE.has(s.status) && !s.active && Date.now() - (this.state.seen[s.id] ?? Date.now()) > DAY;
   }
 
-  sleep() {
-    const all = shared("space-folders");
-    if (!all) return; // the folders list hasn't loaded yet
+  async sleep() {
+    let all = shared("space-folders") ?? {};
     const byMachine = new Map();
     for (const s of spaces()) {
       const k = s.machine ?? "";
@@ -144,8 +175,13 @@ export default class Propeller extends View {
     }
     let next = all;
     for (const [k, list] of byMachine) {
-      const cur = all[k];
-      if (!cur) continue;
+      let cur = all[k];
+      if (!cur) {
+        // No folders here yet, or space-folders hasn't loaded them: its file on that machine decides.
+        const r = await exec("sh", ["-c", `cat ${FOLDERS_FILE} 2>/dev/null || echo '{}'`], { on: k || null, timeout: 5000 }).catch(() => null);
+        if (!r || r.code !== 0) continue;
+        try { cur = JSON.parse(r.stdout || "{}"); } catch { continue; }
+      }
       const data = { list: [...(cur.list ?? [])], of: { ...(cur.of ?? {}) } };
       let changed = false;
       for (const s of list) {
