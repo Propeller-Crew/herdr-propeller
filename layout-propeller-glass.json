@@ -234,9 +234,9 @@
     "border": "#ffffff1c",
     "canvas": "#00000000",
     "popover": "#122b30f2",
-    "foreground": "#c8d1e6",
-    "muted": "#9aa4bb",
-    "dim": "#727d93",
+    "foreground": "#dbe2f1",
+    "muted": "#b1bacd",
+    "dim": "#8893a8",
     "accent": "#d89470"
   }
 }
