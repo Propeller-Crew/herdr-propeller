@@ -18,9 +18,9 @@ d["colors"] = {
     "border": "#ffffff1c",
     "canvas": "#00000000",
     "popover": "#122b30f2",     # menus stay nearly solid so they read over anything
-    "foreground": "#b3bdd6",
-    "muted": "#8590a8",
-    "dim": "#5f6a80",
+    "foreground": "#c8d1e6",
+    "muted": "#9aa4bb",
+    "dim": "#727d93",
     "accent": "#d89470",
 }
 d["preview"] = "layouts/islands.svg"
