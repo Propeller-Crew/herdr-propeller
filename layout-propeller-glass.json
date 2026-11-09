@@ -226,17 +226,17 @@
   "terminal_opacity": 0,
   "theme": "propeller-dusk",
   "colors": {
-    "chrome": "#0b1e2199",
-    "background": "#08171a8c",
+    "chrome": "#18303499",
+    "background": "#13282c99",
     "surface": "#ffffff0d",
     "hover": "#ffffff1a",
     "selected": "#ffffff21",
-    "border": "#ffffff1c",
+    "border": "#ffffff22",
     "canvas": "#00000000",
     "popover": "#122b30f2",
-    "foreground": "#dbe2f1",
-    "muted": "#b1bacd",
-    "dim": "#8893a8",
+    "foreground": "#b3bdd6",
+    "muted": "#8590a8",
+    "dim": "#5f6a80",
     "accent": "#d89470"
   }
 }

@@ -10,17 +10,17 @@ d["background"] = "#0a171a"
 d["theme"] = "propeller-dusk"
 d["terminal_opacity"] = 0
 d["colors"] = {
-    "chrome": "#0b1e2199",      # sidebar cards and bars
-    "background": "#08171a8c",  # terminal cards
+    "chrome": "#18303499",      # sidebar cards and bars
+    "background": "#13282c99",  # terminal cards
     "surface": "#ffffff0d",
     "hover": "#ffffff1a",
     "selected": "#ffffff21",
-    "border": "#ffffff1c",
+    "border": "#ffffff22",
     "canvas": "#00000000",
     "popover": "#122b30f2",     # menus stay nearly solid so they read over anything
-    "foreground": "#dbe2f1",
-    "muted": "#b1bacd",
-    "dim": "#8893a8",
+    "foreground": "#b3bdd6",
+    "muted": "#8590a8",
+    "dim": "#5f6a80",
     "accent": "#d89470",
 }
 d["preview"] = "layouts/islands.svg"
