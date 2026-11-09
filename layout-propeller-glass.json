@@ -210,10 +210,7 @@
       "gap": 12
     }
   ],
-  "background": {
-    "image": "backgrounds/glass-desktop.png",
-    "fit": "cover"
-  },
+  "background": "#0f2226",
   "terminal_padding": [
     16,
     14
