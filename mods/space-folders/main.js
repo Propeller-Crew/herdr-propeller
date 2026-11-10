@@ -11,7 +11,7 @@
 // another machine too, with its header and spaces, when a rule matches the
 // machine's name or the folder one of its spaces works in.
 
-import { View, div, svg } from "gpui-kit";
+import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, machines, panes, run, openOverlay, closeOverlay, props, exec, hc, theme, shared, setShared, watchFolder, window, layout, pickFolder, home, nextCommand } from "herdr";
 
@@ -135,6 +135,14 @@ const FALLBACK = 60000;
 
 // What a stored color name looks like on an avatar (the same in every mod
 // that draws space avatars): one strong color per hue, light and dark alike.
+// A space's badge: its picked icon, else the first letter of its name on its color.
+function badge(w, fill) {
+  const ic = (shared("space.icons") ?? {})[w.id];
+  if (ic?.image) return image(ic.image).size(18).flex_none().rounded(5);
+  if (ic?.glyph) return h_flex().size(18).flex_none().rounded(5).bg(ic.color ?? fill).items_center().justify_center().child(svg(ic.glyph).size(12).text_color("#ffffff"));
+  return h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?");
+}
+
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 
 // A space speaks up only when something in it needs you.
@@ -683,6 +691,9 @@ export default class Spaces extends View {
         .when(!connected, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
         .when(connected, el => el.child(div().id(`machine-folder-${m ?? "local"}`).flex_none().px(3).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click((_e, cx) => { cx.stop_propagation(); this.newFolder(m); }).child(svg("mods/workspace-chrome/folder-plus.svg").size(12))))
+        .when(connected && !m, el => el.child(div().id("space-icons-ask").flex_none().px(3).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
+          .on_click((_e, cx) => { cx.stop_propagation(); if (!shared("space.icons.busy")) setShared("space.icons.ask", Date.now()); })
+          .child(shared("space.icons.busy") ? svg("mods/workspace-chrome/spinner.svg").size(12).spin(900) : svg("mods/space-folders/sparkles.svg").size(12))))
         .when(connected, el => el.child(div().id(`machine-add-${m ?? "local"}`).flex_none().px(4).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click((_e, cx) => { cx.stop_propagation(); newSpaceIn(m, null); }).child("+")))
         .child(div().size(6).rounded(3).flex_none().bg(connected ? t.ansi2 : t.dim))
@@ -791,7 +802,7 @@ export default class Spaces extends View {
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
+          .when(!tree, el => el.child(badge(w, fill)))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
           .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()),
       );

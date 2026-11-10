@@ -12,6 +12,7 @@ rm -rf "$HERE/mods/space-folders"
 cp -R "$EXT/herdr-space-folders/mods/space-folders" "$HERE/mods/space-folders"
 sed -i '' 's/return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)/return v_flex().size_full().min_h(0).rounded(13).overflow_hidden().bg(t.chrome).text_size(13)/' "$HERE/mods/space-folders/main.js"
 grep -q 'rounded(13).overflow_hidden().bg(t.chrome).text_size(13)' "$HERE/mods/space-folders/main.js" || { echo "space-folders patch did not apply: upstream changed, look at main.js root" >&2; exit 1; }
+python3 "$HERE/patches/space-folders.py" "$HERE/mods/space-folders" || exit 1
 
 # islands-tabs with our changes (patches/islands-tabs.py).
 rm -rf "$HERE/mods/islands-tabs"

@@ -59,6 +59,13 @@ export default class Propeller extends View {
       cx.notify();
     });
     cx.timer.every(1000, (cx) => { if (Object.keys(this.state.pending).length) this.wake(); });
+    cx.timer.every(1000, (cx) => {
+      const ask = shared("space.icons.ask");
+      if (ask && ask !== this.asked && !shared("space.icons.busy")) {
+        this.asked = ask;
+        cx.spawn(async () => { await this.pickIcons(); });
+      }
+    });
     cx.timer.every(15000, (cx) => cx.spawn(async (cx) => { await this.tick(); cx.notify(); }));
     cx.timer.every(30000, (cx) => cx.spawn(async (cx) => { await this.readLimits(); cx.notify(); }));
   }
@@ -110,6 +117,56 @@ export default class Propeller extends View {
       delete this.state.pending[p.terminal];
       const cmd = typeof w === "string" ? `claude --resume ${w} --fork-session` : `claude --resume ${w.session}`;
       hc(["send", p.terminal, `${CLEAN_ENV} ${cmd}`]).catch(() => null);
+    }
+  }
+
+  // --- 4. Space icons ----------------------------------------------------------------
+  // The ✨ in the Spaces header: a headless Claude picks an icon for every space without one.
+  // Our own products: the app's real icon or logo from its code; a brand: its Simple Icons logo;
+  // anything else: a Lucide icon. Files go
+  // under ~/.config/herdr-app/space-icons (Herdr shows images only from its own folder).
+  async pickIcons() {
+    const icons = shared("space.icons") ?? {};
+    const todo = spaces().filter((s) => !s.machine && !icons[s.id]).map((s) => ({
+      id: s.id, name: s.name, folder: s.folder,
+      tabs: s.tabs.filter((t) => t.named).map((t) => t.name),
+    }));
+    if (!todo.length) return;
+    setShared("space.icons.busy", true);
+    const dir = `${home()}/.config/herdr-app/space-icons`;
+    const prompt = `Pick an icon for each workspace below (a list of a person's work sessions in a terminal app).
+
+For each one, decide what it is about from its name, folder and tab names, then give it the most fitting icon, in this order:
+1. An app or product whose code is in its folder: its real app icon or logo from its code (an AppIcon.appiconset PNG, icon.png, favicon, logo; the largest). Make a 64 px PNG:
+     sips -s format png -Z 64 "<source>" --out "${dir}/<id>.png"
+   and answer {"image": "space-icons/<id>.png"}. Look quickly; don't search the whole disk.
+2. About a brand, product or service (Amazon, Home Assistant, Instagram, GitLab, Lightroom, Kindle, Obsidian, Raspberry Pi…): its logo from Simple Icons:
+     curl -fsSL https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/<slug>.svg -o "${dir}/<id>.svg"
+   (slug: lowercase name without spaces or dots, e.g. homeassistant, amazon, instagram). Answer {"glyph": "space-icons/<id>.svg", "color": "#<the brand's main color>"}. If curl fails (the brand isn't there), go to 3.
+3. Anything else: a fitting icon from Lucide (lucide.dev names: battery-charging, hard-drive, film, music, key-round, printer, camera, piano, cpu, book-open, sticker, scissors…):
+     curl -fsSL https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/<name>.svg -o "${dir}/<id>.svg"
+   Answer {"glyph": "space-icons/<id>.svg"}. Try another name if curl fails.
+Never draw or invent an SVG yourself.
+
+Reply with only one JSON object: {"<id>": {"image": "…"} or {"glyph": "…", "color"?: "…"}, …}, every id below, nothing else.
+
+${JSON.stringify(todo, null, 1)}`;
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      const r = await exec("sh", ["-c", `${CLEAN_ENV} cd ~ && claude -p "$1" --model sonnet --output-format json --allowedTools "Read,Glob,Grep,Bash(sips:*),Bash(ls:*),Bash(find:*),Bash(curl:*)" < /dev/null`, "sh", prompt], { timeout: 600000 });
+      const text = JSON.parse(r.stdout).result ?? "";
+      const picked = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
+      const next = { ...(shared("space.icons") ?? {}) };
+      for (const [id, ic] of Object.entries(picked)) {
+        if (ic?.image && await fs.exists(`${home()}/.config/herdr-app/${ic.image}`)) next[id] = { image: ic.image };
+        else if (ic?.glyph && await fs.exists(`${home()}/.config/herdr-app/${ic.glyph}`))
+          next[id] = { glyph: ic.glyph, ...(/^#[0-9a-fA-F]{6}$/.test(ic.color ?? "") ? { color: ic.color } : {}) };
+      }
+      setShared("space.icons", next);
+    } catch (e) {
+      console.log("propeller icons:", e?.message ?? e);
+    } finally {
+      setShared("space.icons.busy", false);
     }
   }
 
@@ -248,7 +305,18 @@ export default class Propeller extends View {
       }
     }
     if (next !== all) setShared("space-folders", next);
+    this.orderSleeping(next);
     for (const id of Object.keys(this.state.settled)) if (!spaces().some((s) => s.id === id)) delete this.state.settled[id];
+  }
+
+  // Sleeping spaces in the order you last touched them, newest first (as the cmux sidebar had it).
+  // They sit together in their folder, so moving them to the end of the list keeps everything else.
+  orderSleeping(folders) {
+    const all = spaces();
+    const asleep = all.filter((s) => folders[s.machine ?? ""]?.of?.[localId(s)] === SLEEP.id);
+    const want = [...asleep].sort((a, b) => (this.state.seen[b.id] ?? 0) - (this.state.seen[a.id] ?? 0));
+    if (want.every((s, i) => s.id === asleep[i].id)) return;
+    for (const s of want) run("space.move", { id: s.id, index: all.length });
   }
 
   // A sleeping space's idle Claudes quit (cmux did the same), so they hold no memory and leave
