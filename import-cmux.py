@@ -73,8 +73,9 @@ def by_time(epoch, taken):
     return hits[0] if len(hits) == 1 else None
 
 
-tree = json.loads(sh("cmux", "tree", "--json", "--all", "--id-format", "both"))
-recs = json.loads(sh("cmux", "sessions", "list", "--agent", "claude", "--json", "--all"))["sessions"]
+CMUX = "/Applications/cmux.app/Contents/Resources/bin/cmux"
+tree = json.loads(sh(CMUX, "tree", "--json", "--all", "--id-format", "both"))
+recs = json.loads(sh(CMUX, "sessions", "list", "--agent", "claude", "--json", "--all"))["sessions"]
 saved = {w["workspaceId"]: w for w in walk(json.load(open(f"{H}/Library/Application Support/cmux/session-com.cmuxterm.app.json")))}
 
 JOURNAL = f"{H}/Library/Application Support/cmux/agent-journal-com.cmuxterm.app.sqlite3"
