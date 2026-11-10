@@ -16,6 +16,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { spaces, terminals, panes, hc, exec, theme, run, home, shared, setShared, layout, openOverlay } from "herdr";
 const ART = "mods/propeller-art";
 import * as fs from "fs/promises";
+import { colors as paletteColors } from "./palette.js";
 
 const DAY = 24 * 3600 * 1000;
 // The space-folders mod keeps each machine's folders in shared("space-folders")[machine ?? ""]
@@ -36,6 +37,8 @@ const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 
 const statePath = () => `${home()}/.config/herdr-app/data/propeller-state.json`;
 // Written by import-cmux.py: { resume: {terminal: session}, seen: {space: ms}, at }.
+// The chosen colours ({h, c}, palette.js); absent: our teal, as the repo ships it.
+const colorsPath = () => `${home()}/.config/herdr-app/data/propeller-colors.json`;
 const importPath = () => `${home()}/.config/herdr-app/data/propeller-import.json`;
 const machineOf = (addr) => (addr.includes("/") ? addr.split("/")[0] : null);
 
@@ -62,6 +65,7 @@ export default class Propeller extends View {
     this.busy = false;
     cx.spawn(async (cx) => {
       try { this.state = { ...this.state, ...JSON.parse(await fs.readFile(statePath(), "utf8")) }; } catch {}
+      await this.paint(null);
       await this.tick();
       await this.readLimits();
       cx.notify();
@@ -81,6 +85,12 @@ export default class Propeller extends View {
         setShared("propeller.updateNow", null);
         cx.spawn(async (cx) => { cx.notify(); await this.update(); cx.notify(); });
       }
+      // A colour from the picker (propeller-colors).
+      const pick = shared("propeller.colors.pick");
+      if (pick && pick.at !== this.pickAt) {
+        this.pickAt = pick.at;
+        cx.spawn(async () => { await this.paint({ h: pick.h, c: pick.c }, true); });
+      }
       // "Звільнити RAM" from the card's menu (propeller-menu).
       const free = shared("propeller.free");
       if (free && free !== this.freeAsked) {
@@ -92,7 +102,8 @@ export default class Propeller extends View {
     });
     // The octopus: a new frame each second while its mood has more than one.
     cx.timer.every(1000, (cx) => { if (OCTO[this.mood()] > 1) cx.notify(); });
-    cx.timer.every(15000, (cx) => cx.spawn(async (cx) => { await this.tick(); cx.notify(); }));
+    // An update copies the repo's teal theme files back: paint them over again.
+    cx.timer.every(15000, (cx) => cx.spawn(async (cx) => { await this.paint(null); await this.tick(); cx.notify(); }));
     cx.timer.every(30000, (cx) => cx.spawn(async (cx) => { await this.readLimits(); cx.notify(); }));
     // Updates: a look at GitHub a minute after start, then every 6 hours.
     cx.timer.after(60000, (cx) => cx.spawn(async (cx) => { await this.checkUpdate(); cx.notify(); }));
@@ -165,6 +176,26 @@ export default class Propeller extends View {
       console.log("propeller tick:", e?.message ?? e);
     } finally {
       this.busy = false;
+    }
+  }
+
+  // --- Colours ------------------------------------------------------------------------
+  // Our glass theme in the chosen hue: its two files in ~/.config/herdr-app/themes get their
+  // panel colours from palette.js (Herdr picks up the edit live). pick: a new choice to keep;
+  // null: the kept one, repainted only where a file differs (after an update put teal back).
+  async paint(pick, save) {
+    let want = pick;
+    if (!want) try { want = JSON.parse(await fs.readFile(colorsPath(), "utf8")); } catch { return; }
+    if (save) await fs.writeFile(colorsPath(), JSON.stringify(want));
+    setShared("propeller.colors", want);
+    for (const dark of [false, true]) {
+      const path = `${home()}/.config/herdr-app/themes/propeller-glass-${dark ? "dark" : "light"}.json`;
+      try {
+        const text = await fs.readFile(path, "utf8"), d = JSON.parse(text);
+        d.colors = { ...d.colors, ...paletteColors(want, dark) };
+        const out = JSON.stringify(d, null, 2) + "\n";
+        if (out !== text) await fs.writeFile(path, out);
+      } catch (e) { console.log("propeller colours:", e?.message ?? e); }
     }
   }
 
@@ -490,7 +521,7 @@ ${JSON.stringify(todo, null, 1)}`;
     }
     // Right-click the card: its menu (free RAM), so the card itself stays quiet.
     return h_flex().id("propeller").size_full().rounded(13).overflow_hidden().pl(10).pr(12).gap(12).items_center().bg(t.chrome)
-      .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 230, height: 12 + 31 * (shared("propeller.update") ? 2 : 1), props: { tab: "propeller" } }))
+      .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 230, height: 12 + 31 * (shared("propeller.update") ? 3 : 2), props: { tab: "propeller" } }))
       .child(div().relative().flex_none().child(octo)
         .when(this.behind > 0 || this.updating, (el) => el.child(div().absolute().top(-2).right(-2).size(16).rounded(8).bg(t.accent)
           .flex().items_center().justify_center().child(svg(`${ART}/arrow-down-to-line.svg`).size(10).text_color("#ffffff")))))

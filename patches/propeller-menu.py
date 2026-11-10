@@ -38,6 +38,7 @@ function propellerItems(id) {
 const placeOf = (id) => { const s = spaces().find((x) => x.id === id); return s ? place(s) : undefined; };
 function propellerRun(command, args) {
   if (command === "propeller.free") return setShared("propeller.free", Date.now());
+  if (command === "propeller.colors") return openOverlay({ mod: "propeller-colors", kind: "dialog", width: 300, height: 400 });
   if (command === "propeller.update") return setShared("propeller.updateNow", Date.now());
   const s = spaces().find((x) => x.id === args.id);
   if (!s) return;
@@ -67,10 +68,12 @@ rep('''    else run(it[1], it[2]);''', '''    else if (it[1].startsWith("propell
 rep('''    case "tab":''', '''    case "propeller":
       return [
         ...(shared("propeller.update") ? [["Оновити herdr-propeller", "propeller.update", {}]] : []),
+        ["Кольори…", "propeller.colors", {}],
         ["Звільнити RAM", "propeller.free", {}],
       ];
     case "tab":''')
 rep('''  if (command === "propeller.sleep") return''', '''  if (command === "propeller.free") return "mods/propeller-art/moon.svg";
+  if (command === "propeller.colors") return "mods/propeller-art/palette.svg";
   if (command === "propeller.update") return "mods/propeller-art/arrow-down-to-line.svg";
   if (command === "propeller.sleep") return''')
 # cmd-t opens a plain tab, not our Claude ones: no shortcut hint on them.

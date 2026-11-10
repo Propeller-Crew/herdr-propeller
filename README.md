@@ -22,7 +22,11 @@ workspace app. Built as Herdr mods and config, not a fork, so Herdr's updates ke
   in this space, a Claude on its own branch (`claude -w`).
 - **Claude Code skill `herdr-tabs`.** Ask Claude to open a tab or space for a task, and it
   starts another Claude there with a brief, then watches it (`hc wait`) and brings back the result.
-- **Glass layout** in light and dark, following the system.
+- **Glass layout** in light and dark, following the system. Its colours are yours to pick:
+  right-click the octopus card → «Кольори…» for a hue wheel and ready palettes (teal, sky,
+  indigo, violet, rose, sand, moss, graphite); both appearances change together.
+- **New spaces start with Claude.** Cmd+N and the sidebar's + open a space in the shown
+  profile's folder with Claude running; Cmd+T stays a plain terminal tab.
 
 The interface is in Ukrainian.
 
