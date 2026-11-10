@@ -73,5 +73,7 @@ rep('''    case "tab":''', '''    case "propeller":
 rep('''  if (command === "propeller.sleep") return''', '''  if (command === "propeller.free") return "mods/propeller-art/moon.svg";
   if (command === "propeller.update") return "mods/propeller-art/arrow-down-to-line.svg";
   if (command === "propeller.sleep") return''')
+# cmd-t opens a plain tab, not our Claude ones: no shortcut hint on them.
+rep('''child(shortcut(it[1], it[2]))''', '''child(it[2]?.argv ? "" : shortcut(it[1], it[2]))''')
 (dst / "main.js").write_text(s)
 shutil.copy(src / "mod.json", dst / "mod.json")
