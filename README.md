@@ -17,5 +17,18 @@ Our additions to the Herdr app (herdr.dev), kept outside Herdr so its updates ke
   A layout clone doesn't get Herdr's layout updates; the shipped mods it uses still do.
 - `config.toml`, `limits.py`: for the terminal version of herdr (TUI), unused by the app.
 
+## Install on another Mac
+
+1. `brew install --cask herdr-app`, open Herdr once from Spotlight.
+2. `git clone https://github.com/Propeller-Crew/herdr-propeller.git ~/code/herdr-propeller && ~/code/herdr-propeller/install.sh`
+3. Claude limits on the card: the Claude Code status line must save them. Add to the
+   statusLine script (it gets the status JSON on stdin):
+   `limits=$(echo "$input" | jq -c '.rate_limits // empty'); [ -n "$limits" ] && printf '%s' "$limits" > "$HOME/.claude/rate-limits.json"`
+4. Profiles: «Особисте» is any space under `~/Documents/ObsidianVault`, the rest is «Робоче»
+   (`PROFILES` / `profileOf` in `mods/propeller-agents/main.js`); move a space by right-click → Перенести.
+
+Update: `git -C ~/code/herdr-propeller pull && ~/code/herdr-propeller/install.sh`.
+`import-cmux.py` is only for moving from cmux.
+
 Never start Herdr.app or `hc` from inside a Claude session: the core inherits
 `CLAUDE_CODE_CHILD_SESSION` and Claude stops saving conversations. Start the app from Spotlight.
