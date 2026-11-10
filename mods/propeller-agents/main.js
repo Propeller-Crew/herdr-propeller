@@ -120,6 +120,7 @@ export default class PropellerAgents extends View {
         const c = String(await nextCommand()).split(".").pop();
         if (c === "next" || c === "prev") this.step(c === "next" ? 1 : -1);
         if (c === "work" || c === "personal") this.setProfile(c);
+        if (c === "new") this.newSpace();
         cx.notify();
       }
     });
@@ -264,7 +265,7 @@ export default class PropellerAgents extends View {
     const busy = shared("space.icons.busy");
     return h_flex().flex_none().gap(4).px(2).pb(6).items_center()
       .child(h_flex().flex_1().p(2).gap(2).rounded(9).bg(t.surface ?? t.hover).children(PROFILES.map(tab)))
-      .child(icon("new-space", "plus", () => run("space.new", { name: "", folder: folderOf(prof.id), machine: "" })))
+      .child(icon("new-space", "plus", () => this.newSpace()))
       .child(icon("icons", "sparkles", () => { if (!busy) setShared("space.icons.ask", Date.now()); },
         busy ? svg("mods/workspace-chrome/spinner.svg").size(13).spin(900) : null));
   }
@@ -305,6 +306,12 @@ export default class PropellerAgents extends View {
       }
     }
     return v_flex().id("propeller-agents").size_full().rounded(13).overflow_hidden().bg(t.chrome).py(8).px(6).gap(2).overflow_y_scroll().children(rows);
+  }
+
+  // A new space in the shown profile's folder, with Claude already running (cmd-n and the +).
+  // Claude runs in the interactive shell, which stays open after it quits.
+  newSpace() {
+    run("space.new", { name: "", folder: folderOf(this.profile), machine: "", argv: ["claude"] });
   }
 
   render() {
