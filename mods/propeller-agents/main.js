@@ -36,6 +36,27 @@ const profileOf = (s) => (shared("propeller.profile") ?? {})[s.id] ?? (/\/Obsidi
 const SLEEPING_PREVIEW = 12;
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 const DOTS = ["●∙∙", "∙●∙", "∙∙●"];
+// How a working row shows it works (right-click a group's pill to pick). All run natively in
+// GPUI, only while drawn (frames / spin / loop), so none costs the CPU anything to speak of.
+const SPINNERS = [
+  { id: "herdr", name: "Кружечок Herdr" },
+  { id: "dots", name: "Три крапки (cmux)" },
+  { id: "pulse", name: "Пульс (cmux)" },
+  { id: "braille", name: "Брайль ⠋⠙⠹" },
+  { id: "moon", name: "Півмісяць ◐◓◑◒" },
+  { id: "bars", name: "Еквалайзер ▁▃▅▇" },
+];
+const BRAILLE = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const MOON = ["◐", "◓", "◑", "◒"];
+const BARS = ["▁", "▂", "▃", "▅", "▇", "▅", "▃", "▂"];
+function spinner(kind, color, size = 12) {
+  if (kind === "herdr") return svg("mods/workspace-chrome/spinner.svg").size(size).flex_none().text_color(color).spin(900);
+  if (kind === "pulse") return div().size(size * 0.6).flex_none().rounded(size).bg(color).loop("opacity", { from: 0.25, to: 1, period: 1200 });
+  if (kind === "braille") return div().text_size(size + 1).text_color(color).frames(BRAILLE, 90).child(BRAILLE[0]);
+  if (kind === "moon") return div().text_size(size).text_color(color).frames(MOON, 160).child(MOON[0]);
+  if (kind === "bars") return div().text_size(size).text_color(color).frames(BARS, 110).child(BARS[0]);
+  return div().text_size(size - 2).text_color(color).frames(DOTS, 260).child(DOTS[0]);
+}
 
 const find = (n, id) => n?.id === id ? n : (n?.children ?? []).reduce((r, c) => r ?? find(c, id), null);
 const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
@@ -84,6 +105,8 @@ export default class PropellerAgents extends View {
     try { saved = JSON.parse(localStorage.getItem("folded") ?? "{}"); } catch {}
     this.folded = { inactive: true, ...saved };
     this.allSleeping = false;
+    this.spin = localStorage.getItem("spinner") ?? "herdr";
+    this.picking = false;
     this.profile = localStorage.getItem("profile") ?? "work";
     this.lastActive = null;
     this.order = []; // space ids as shown, for alt-up/down
@@ -152,6 +175,19 @@ export default class PropellerAgents extends View {
       .when(Boolean(this.dragging && this.moved && this.over === id), (x) => x.border(1).border_color(t.accent));
   }
 
+  // The indicator picker (right-click a pill): each option live, the chosen one marked.
+  picker(t) {
+    return v_flex().flex_none().mx(4).mb(6).p(4).gap(1).rounded(9).border(1).border_color(t.border).bg(t.popover ?? t.chrome)
+      .child(div().px(6).py(2).text_size(11).text_color(t.dim).child("Як показувати «В роботі»"))
+      .children(SPINNERS.map((o) => h_flex().id(`sp-${o.id}`).h(26).px(6).gap(10).items_center().rounded(6)
+        .when(o.id === this.spin, (el) => el.bg(t.selected))
+        .hover((x) => x.bg(t.hover))
+        .on_click((_e, cx) => { this.spin = o.id; this.picking = false; localStorage.setItem("spinner", o.id); cx.notify(); })
+        .child(h_flex().w(22).flex_none().justify_center().child(spinner(o.id, "#9B7BFF")))
+        .child(div().flex_1().text_size(12).text_color(t.foreground).child(o.name))
+        .when(o.id === this.spin, (el) => el.child(svg(`${ART}/check.svg`).size(12).text_color(t.muted)))));
+  }
+
   toggle(id, cx) {
     this.folded = { ...this.folded, [id]: !this.folded[id] };
     if (id === "inactive") this.allSleeping = false;
@@ -161,7 +197,7 @@ export default class PropellerAgents extends View {
 
   mark(kind, t, size = 13) {
     const box = h_flex().w(22).h(16).flex_none().items_center().justify_end();
-    if (kind === "working") return box.child(div().text_size(10).text_color("#9B7BFF").frames(DOTS, 260).child(DOTS[0]));
+    if (kind === "working") return box.child(spinner(this.spin, "#9B7BFF", size - 1));
     if (kind === "needs") return box.child(svg(`${ART}/circle-dot.svg`).size(size).text_color("#F5A524"));
     if (kind === "unread") return box.child(svg(`${ART}/sparkles.svg`).size(size).text_color("#4C9EEB"));
     if (kind === "done") return box.child(svg(`${ART}/check.svg`).size(size - 2).text_color(t.muted));
@@ -173,6 +209,7 @@ export default class PropellerAgents extends View {
     const folded = this.folded[sec.id];
     return this.target(h_flex().id(`h-${sec.id}`).h(28).flex_none().px(4).items_center().cursor_pointer().rounded(8), sec.id, t)
       .on_click((_e, cx) => { if (!this.moved) this.toggle(sec.id, cx); })
+      .on_mouse_down("right", (_e, cx) => { this.picking = !this.picking; cx.notify(); })
       .child(h_flex().gap(5).px(9).py(3).rounded(11).bg(sec.color + "33").items_center()
         .child(svg(`${ART}/${sec.icon}.svg`).size(11).text_color(sec.color))
         .child(div().text_size(12).font_semibold().text_color(sec.color).child(sec.name))
@@ -258,7 +295,7 @@ export default class PropellerAgents extends View {
           .on_click(() => run("space.select", { id: s.id }))
           .child(badge(s, t, 20))
           .child(st.kind === "working"
-            ? div().text_size(8).text_color(sec.color).frames(DOTS, 260).child(DOTS[0])
+            ? spinner(this.spin, sec.color, 9)
             : div().size(5).rounded(3).bg(sec.color)));
       }
     }
@@ -288,7 +325,7 @@ export default class PropellerAgents extends View {
     if (narrow()) return this.rail(groups, t);
 
     const all = panes();
-    const body = [this.top(everywhere, t)];
+    const body = [this.top(everywhere, t), ...(this.picking ? [this.picker(t)] : [])];
     const order = [];
     for (const sec of SECTIONS) {
       const rows = groups[sec.id];
