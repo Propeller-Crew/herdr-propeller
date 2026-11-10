@@ -125,6 +125,33 @@ export default class PropellerAgents extends View {
     run("space.select", { id: ids[at < 0 ? 0 : (at + dir + len) % len] });
   }
 
+  // Dragging a space (pressed on its row, released elsewhere): onto a group's pill puts it to sleep
+  // ("Сплять") or wakes it (any other group); onto a profile moves it there.
+  drop(target) {
+    const s = spaces().find((x) => x.id === this.dragging);
+    if (!s) return;
+    if (target === "inactive") this.setAsleep(s, true);
+    else if (SECTIONS.some((x) => x.id === target)) this.setAsleep(s, false);
+    else if (PROFILES.some((p) => p.id === target)) setShared("propeller.profile", { ...(shared("propeller.profile") ?? {}), [s.id]: target });
+  }
+
+  // Into "Сплять" or out of it: the propeller mod sees the move and settles or wakes the space.
+  setAsleep(s, on) {
+    const all = shared("space-folders") ?? {}, k = s.machine ?? "", cur = all[k] ?? { list: [], of: {} };
+    const of = { ...cur.of };
+    if ((of[localId(s)] === SLEEP) === on) return;
+    if (on) of[localId(s)] = SLEEP; else delete of[localId(s)];
+    setShared("space-folders", { ...all, [k]: { ...cur, of, at: Date.now() } });
+  }
+
+  // A drop target: highlighted while a space is dragged over it.
+  target(el, id, t) {
+    return el
+      .on_mouse_move((_e, cx) => { if (this.dragging && this.over !== id) { this.over = id; cx.notify(); } })
+      .on_mouse_up("left", (_e, cx) => { if (this.dragging && this.moved) { this.drop(id); this.dragging = null; this.over = null; cx.notify(); } })
+      .when(Boolean(this.dragging && this.moved && this.over === id), (x) => x.border(1).border_color(t.accent));
+  }
+
   toggle(id, cx) {
     this.folded = { ...this.folded, [id]: !this.folded[id] };
     if (id === "inactive") this.allSleeping = false;
@@ -144,8 +171,8 @@ export default class PropellerAgents extends View {
 
   header(sec, n, t) {
     const folded = this.folded[sec.id];
-    return h_flex().id(`h-${sec.id}`).h(28).flex_none().px(4).items_center().cursor_pointer().rounded(8)
-      .on_click((_e, cx) => this.toggle(sec.id, cx))
+    return this.target(h_flex().id(`h-${sec.id}`).h(28).flex_none().px(4).items_center().cursor_pointer().rounded(8), sec.id, t)
+      .on_click((_e, cx) => { if (!this.moved) this.toggle(sec.id, cx); })
       .child(h_flex().gap(5).px(9).py(3).rounded(11).bg(sec.color + "33").items_center()
         .child(svg(`${ART}/${sec.icon}.svg`).size(11).text_color(sec.color))
         .child(div().text_size(12).font_semibold().text_color(sec.color).child(sec.name))
@@ -162,7 +189,10 @@ export default class PropellerAgents extends View {
       .when(on, (el) => el.bg(t.selected))
       .when(!on, (el) => el.hover((x) => x.bg(t.hover)))
       .when(st.kind === "unread" && !on, (el) => el.bg("#4C9EEB24"))
-      .on_click(() => run("space.select", { id: s.id }))
+      .when(this.dragging === s.id && this.moved, (el) => el.opacity(0.5))
+      .on_mouse_down("left", () => { this.dragging = s.id; this.moved = false; this.over = null; })
+      .on_mouse_move((_e, cx) => { if (this.dragging && this.dragging !== s.id && !this.moved) { this.moved = true; cx.notify(); } })
+      .on_mouse_up("left", () => { if (this.dragging === s.id && !this.moved) run("space.select", { id: s.id }); })
       // Herdr's space menu with our items (patches/propeller-menu.py): move to the other profile, sleep.
       .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 300, props: { tab: "space", target: { id: s.id } } }))
       .child(badge(s, t))
@@ -178,10 +208,10 @@ export default class PropellerAgents extends View {
     const urgent = (pid) => ["needs", "unread"].some((k) => groups[k].some(({ s }) => profileOf(s) === pid));
     const tab = (p) => {
       const on = p.id === this.profile;
-      return h_flex().id(`p-${p.id}`).flex_1().h(26).gap(6).items_center().justify_center().rounded(7)
+      return this.target(h_flex().id(`p-${p.id}`).flex_1().h(26).gap(6).items_center().justify_center().rounded(7), p.id, t)
         .when(on, (el) => el.bg(p.color + "2e"))
         .when(!on, (el) => el.hover((x) => x.bg(t.hover)))
-        .on_click((_e, cx) => { this.setProfile(p.id); cx.notify(); })
+        .on_click((_e, cx) => { if (!this.moved) { this.setProfile(p.id); cx.notify(); } })
         .child(svg(`${ART}/${p.icon}.svg`).size(13).text_color(on ? p.color : t.dim))
         .child(div().text_size(12).font_semibold().text_color(on ? t.foreground : t.muted).child(p.name))
         .when(!on && urgent(p.id), (el) => el.child(div().size(6).rounded(3).bg("#F5A524")));
@@ -279,6 +309,10 @@ export default class PropellerAgents extends View {
     }
     this.order = order;
     return v_flex().id("propeller-agents").size_full().rounded(13).overflow_hidden().bg(t.chrome).px(6).py(8).gap(1).overflow_y_scroll()
+      .on_mouse_down("left", () => { if (!this.dragging) this.moved = false; })
+      // Any release ends a drag; one that left its row turns on "moved" for the targets above.
+      .on_mouse_move((_e, cx) => { if (this.dragging && !this.moved && this.over) { this.moved = true; cx.notify(); } })
+      .on_mouse_up("left", (_e, cx) => { if (this.dragging) { this.dragging = null; this.moved = false; this.over = null; cx.notify(); } })
       .children(body.length > 1 ? body : [...body, div().px(10).py(6).text_size(12).text_color(t.dim).child("Тут поки порожньо")]);
   }
 }
