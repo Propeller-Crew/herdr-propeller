@@ -333,7 +333,7 @@ export default class PropellerAgents extends View {
       const { rows, order } = this.page(byProfile[p.id], all, t);
       if (p.id === this.profile) this.order = order;
       return v_flex().id(`page-${p.id}`).absolute().top(0).bottom(0).w_full().left((i - at) * W + (this.drag ?? 0))
-        .spring("left", { response: 380, damping: 0.86 })
+        .spring("left", { response: 340, damping: 1 })
         .px(6).pb(8).gap(1).overflow_y_scroll().children(rows);
     });
     return v_flex().id("propeller-agents").size_full().rounded(13).overflow_hidden().bg(t.chrome).pt(8)
@@ -376,12 +376,17 @@ export default class PropellerAgents extends View {
   swiped(e, cx) {
     if (e.bounds?.width) this.w = e.bounds.width;
     const W = this.w ?? 268, now = Date.now();
-    if (this.lock && now < this.lock) return; // the momentum after a swipe
+    if (this.lock && now < this.lock) return;
+    // A trackpad keeps sending scroll after the fingers lift (macOS momentum). Once a gesture
+    // with phases has been seen, only events inside a touch (started..ended) move the pages.
+    if (e.touch_phase === "started") { this.trackpad = true; this.touching = true; }
+    else if (this.trackpad && !this.touching) return;
     const fresh = e.touch_phase === "started" || !this.swipe || now - this.swipe.at > 400;
     if (fresh) this.swipe = { x: 0, y: 0, axis: null, touch: e.touch_phase === "started" };
     const sw = this.swipe;
     sw.at = now;
     const end = e.touch_phase === "ended" || e.touch_phase === "cancelled";
+    if (end) this.touching = false;
     if (!end) { sw.x += e.delta.x; sw.y += e.delta.y; }
     if (!sw.axis && Math.abs(sw.x) + Math.abs(sw.y) > 8) sw.axis = Math.abs(sw.x) > 2 * Math.abs(sw.y) ? "x" : "y";
     if (sw.axis !== "x") { if (end) this.swipe = null; return; }
