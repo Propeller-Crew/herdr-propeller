@@ -8,9 +8,12 @@ APP=~/.config/herdr-app
 EXT=~/code/herdr-ext
 [ -d "$APP/mods" ] || { echo "Open Herdr once first (from Spotlight), then run this again." >&2; exit 1; }
 mkdir -p "$EXT"
-for r in jankeesvw/herdr-space-folders CodeyPacker/herdr-mods wobsoriano/herdr-sim; do
-  d="$EXT/$(basename "$r")"
-  if [ -d "$d/.git" ]; then git -C "$d" pull -q; else git clone -q "https://github.com/$r.git" "$d"; fi
+# Pinned to the commits our patches are made for: their newer code can break a patch. To move
+# up, check out a newer commit there, run ./sync-mods.sh, fix patches/ if needed, update these.
+for pin in jankeesvw/herdr-space-folders@63a78b20d5ed30d57166a3c7165a6eb558c3ef84 CodeyPacker/herdr-mods@a90fc434e7fda602de0472d081c981ffa239cf7a wobsoriano/herdr-sim@82b51e8c1e869d497dcd38c7b68f60f879e0aa96; do
+  r=${pin%@*}; c=${pin#*@}; d="$EXT/$(basename "$r")"
+  [ -d "$d/.git" ] || git clone -q "https://github.com/$r.git" "$d"
+  git -C "$d" fetch -q origin && git -C "$d" checkout -q "$c"
 done
 "$HERE/sync-mods.sh"
 # Our keys (alt-up/down through the agents list) merged into the person's own keys.json.

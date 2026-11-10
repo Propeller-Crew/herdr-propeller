@@ -16,8 +16,11 @@ def swap(old, new):
         sys.exit(f"islands-tabs patch: upstream changed, can't find:\n{old}")
     s = s.replace(old, new, 1)
 
-swap('import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";',
-     'import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings, focused } from "herdr";')
+# Add focused to the herdr import, whatever else upstream imports there.
+import re
+m = re.search(r'import \{([^}]*)\} from "herdr";', s)
+if not m: sys.exit("islands-tabs patch: upstream changed, no herdr import")
+if "focused" not in m.group(1): s = s[:m.start()] + 'import {' + m.group(1).rstrip() + ', focused } from "herdr";' + s[m.end():]
 
 swap('''      .child(h_flex().id("tab-actions").flex_none().h_full().px(10).gap(2).items_center().rounded(14).bg(islandFill(t.chrome)).border(1).border_color(t.border)
         .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))''',
