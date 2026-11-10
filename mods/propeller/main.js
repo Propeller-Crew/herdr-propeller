@@ -23,7 +23,7 @@ const SLEEP = { id: "propeller-sleep", name: "Сплять", folded: true, color
 const RULES = "__rules__"; // "the space had no folder of its own": its folder came from rules
 const FOLDERS_FILE = "~/.config/herdr-space-folders.json";
 const localId = (s) => (s.machine ? s.id.slice(s.machine.length + 1) : s.id);
-const BAR = 44;
+const BAR = 38;
 // The cmux sidebar's pixel octopus: frames in ~/.config/herdr-app/mods/propeller-art/<mood>-<i>.png (sync-mods.sh).
 const OCTO = { sleep: 1, idle: 4, work: 2, needs: 2, party: 2 };
 const CLEAN_ENV = `for v in $(env | sed -nE 's/^(CLAUDECODE|CLAUDE_PID|CLAUDE_CODE_[A-Za-z0-9_]+)=.*/\\1/p' | grep -vE '^CLAUDE_CODE_(USE|SKIP|DISABLE|ENABLE|MAX|OAUTH|CLIENT|API)_'); do unset "$v"; done;`;
@@ -393,7 +393,7 @@ ${JSON.stringify(todo, null, 1)}`;
     const pct = expired ? 0 : Math.round(w.used_percentage);
     const color = pct >= 90 ? t.blocked : pct >= 70 ? t.done : t.accent;
     return h_flex().gap(6).items_center().text_size(11.5)
-      .child(div().w(46).text_color(t.muted).child(label))
+      .child(div().w(52).flex_none().whitespace_nowrap().text_color(t.muted).child(label))
       .child(div().w(BAR).h(4).rounded(2).bg(t.border)
         .child(div().h(4).rounded(2).bg(color).w(Math.max(2, (BAR * Math.min(pct, 100)) / 100))))
       .child(div().w(28).text_color(t.foreground).child(`${pct}%`))
