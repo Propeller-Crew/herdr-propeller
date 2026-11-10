@@ -13,7 +13,7 @@
 
 import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, terminals, panes, hc, exec, theme, run, home, shared, setShared } from "herdr";
+import { spaces, terminals, panes, hc, exec, theme, run, home, shared, setShared, layout } from "herdr";
 import * as fs from "fs/promises";
 
 const DAY = 24 * 3600 * 1000;
@@ -28,6 +28,10 @@ const BAR = 54;
 const OCTO = { sleep: 1, idle: 4, work: 2, needs: 2, party: 2 };
 const CLEAN_ENV = `for v in $(env | sed -nE 's/^(CLAUDECODE|CLAUDE_PID|CLAUDE_CODE_[A-Za-z0-9_]+)=.*/\\1/p' | grep -vE '^CLAUDE_CODE_(USE|SKIP|DISABLE|ENABLE|MAX|OAUTH|CLIENT|API)_'); do unset "$v"; done;`;
 const ACTIVE = new Set(["blocked", "done", "working"]);
+
+// The sidebar folded to a rail (Cmd+B, or the » under Agents): only the octopus fits.
+const find = (n, id) => n?.id === id ? n : (n?.children ?? []).reduce((r, c) => r ?? find(c, id), null);
+const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 
 const statePath = () => `${home()}/.config/herdr-app/data/propeller-state.json`;
 // Written by import-cmux.py: { resume: {terminal: session}, seen: {space: ms}, at }.
@@ -401,15 +405,25 @@ ${JSON.stringify(todo, null, 1)}`;
     const mood = this.mood();
     const frame = Math.floor(Date.now() / 1000) % OCTO[mood];
     const freed = this.freed && Date.now() - this.freed.at < 4000 ? this.freed : null;
+    const octo = image(`mods/propeller-art/${mood}-${frame}.png`).size(44).flex_none();
+    if (narrow()) {
+      // On the rail the octopus unfolds the sidebar: its own toggle hides behind the traffic lights.
+      return h_flex().id("propeller").size_full().rounded(13).overflow_hidden().items_center().justify_center().bg(t.chrome)
+        .cursor_pointer().on_click(() => {
+          // The same unfold as the Islands toggle: back to the width it had before folding.
+          setShared("sidebar.collapsed", false);
+          run("layout.resize", { id: "sidebar", px: shared("sidebar.width") ?? 268 });
+        }).child(octo);
+    }
     return h_flex().id("propeller").size_full().rounded(13).overflow_hidden().pl(10).pr(12).gap(10).items_center().bg(t.chrome)
-      .child(image(`mods/propeller-art/${mood}-${frame}.png`).size(44).flex_none())
+      .child(octo)
       .child(v_flex().flex_1().min_w(0).gap(6)
         .child(h_flex().items_center().text_size(11)
           .child(div().flex_1().text_color(t.dim).child("Ліміти Claude"))
-          .child(div().id("free-memory").flex_none().px(5).rounded(4).text_color(t.dim)
+          .child(div().id("free-memory").flex_none().px(7).py(1).rounded(6).border(1).border_color(t.border).text_size(10.5).text_color(t.muted)
             .hover((s) => s.bg(t.hover).text_color(t.foreground))
             .on_click((_e, cx) => { this.freeMemory(); cx.notify(); })
-            .child(freed ? `закрито ${freed.n}` : "звільнити пам'ять")))
+            .child(freed ? `закрито ${freed.n}` : "🧹 звільнити RAM")))
         .children(rows.length ? rows : [div().text_size(11.5).text_color(t.dim).child("ще нема даних")]));
   }
 
