@@ -35,7 +35,8 @@ The interface is in Ukrainian.
    (it gets the status JSON on stdin) add:
    `limits=$(echo "$input" | jq -c '.rate_limits // empty'); [ -n "$limits" ] && printf '%s' "$limits" > "$HOME/.claude/rate-limits.json"`
 
-Update: `git -C ~/code/herdr-propeller pull && ~/code/herdr-propeller/install.sh`.
+Updates: the octopus card checks GitHub every few hours and shows a badge when there is a new
+version; right-click it → «Оновити herdr-propeller». By hand: `git -C ~/code/herdr-propeller pull && ~/code/herdr-propeller/install.sh`.
 
 Don't start Herdr (or `hc`) from inside a Claude Code session: the core inherits
 `CLAUDE_CODE_CHILD_SESSION` and Claude in it stops saving conversations. Start it from Spotlight.
