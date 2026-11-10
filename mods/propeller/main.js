@@ -101,13 +101,15 @@ export default class Propeller extends View {
   // The whole space at once, not only the tab you look at, so its other tabs are ready too.
   wake() {
     const space = spaces().find((s) => s.active);
-    if (!space) return;
+    if (!space || this.state.dozed[space.id]) return; // just put to sleep by hand while you're in it
     const tabs = new Set(space.tabs.map((t) => t.id));
     for (const p of panes()) {
       if (!p.terminal || !tabs.has(p.tab) || !this.state.pending[p.terminal]) continue;
-      const session = this.state.pending[p.terminal];
+      // A string: from cmux, forked so the cmux original stays its own. {session}: put to sleep here.
+      const w = this.state.pending[p.terminal];
       delete this.state.pending[p.terminal];
-      hc(["send", p.terminal, `${CLEAN_ENV} claude --resume ${session} --fork-session`]).catch(() => null);
+      const cmd = typeof w === "string" ? `claude --resume ${w} --fork-session` : `claude --resume ${w.session}`;
+      hc(["send", p.terminal, `${CLEAN_ENV} ${cmd}`]).catch(() => null);
     }
   }
 
@@ -223,6 +225,7 @@ export default class Propeller extends View {
             changed = true;
           }
           for (const t of s.tabs) if (!t.settled) run("tab.settle", { id: t.id });
+          this.quitClaude(s);
         } else if (data.of[id] === SLEEP.id) {
           const prev = this.state.settled[s.id];
           if (prev === undefined || prev === RULES) delete data.of[id];
@@ -246,6 +249,21 @@ export default class Propeller extends View {
     }
     if (next !== all) setShared("space-folders", next);
     for (const id of Object.keys(this.state.settled)) if (!spaces().some((s) => s.id === id)) delete this.state.settled[id];
+  }
+
+  // A sleeping space's idle Claudes quit (cmux did the same), so they hold no memory and leave
+  // the Agents list; opening the space brings each back in the same conversation.
+  quitClaude(s) {
+    const tabs = new Set(s.tabs.map((t) => t.id));
+    const status = new Map(terminals().map((t) => [t.address, t.status]));
+    for (const p of panes()) {
+      if (!p.terminal || !tabs.has(p.tab)) continue;
+      const c = this.state.claude[p.terminal];
+      if (!c || this.state.pending[p.terminal] || status.get(p.terminal) !== "idle") continue;
+      this.state.pending[p.terminal] = { session: c.session };
+      delete this.state.claude[p.terminal];
+      hc(["send", p.terminal, "/exit"]).catch(() => null);
+    }
   }
 
   async save() {
