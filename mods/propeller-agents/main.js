@@ -307,7 +307,7 @@ export default class PropellerAgents extends View {
     const seen = shared("propeller.seen") ?? {};
     const of = (shared("space-folders") ?? {})[""]?.of ?? {};
     const asleep = new Set(Object.entries(of).filter(([, f]) => f === SLEEP).map(([id]) => id));
-    const groups = Object.fromEntries(SECTIONS.map((x) => [x.id, []]));
+    const byProfile = Object.fromEntries(PROFILES.map((p) => [p.id, Object.fromEntries(SECTIONS.map((x) => [x.id, []]))]));
     // Opening a space of the other profile (a key, a notification) switches the sidebar to it.
     const active = spaces().find((s) => s.active);
     if (active && active.id !== this.lastActive) {
@@ -318,53 +318,84 @@ export default class PropellerAgents extends View {
     for (const s of spaces()) {
       const st = this.state(s, seen, asleep);
       everywhere[st.kind].push({ s, st });
-      if (profileOf(s) !== this.profile) continue;
-      groups[st.kind].push({ s, st });
+      byProfile[profileOf(s)][st.kind].push({ s, st });
     }
-    for (const g of Object.values(groups)) g.sort((a, b) => (b.st.since ?? 0) - (a.st.since ?? 0));
+    for (const gs of Object.values(byProfile)) for (const g of Object.values(gs)) g.sort((a, b) => (b.st.since ?? 0) - (a.st.since ?? 0));
+    const groups = byProfile[this.profile];
     if (narrow()) return this.rail(groups, t);
 
     const all = panes();
-    const body = [this.top(everywhere, t), ...(this.picking ? [this.picker(t)] : [])];
-    const order = [];
-    for (const sec of SECTIONS) {
-      const rows = groups[sec.id];
-      if (!rows.length) continue;
-      body.push(this.header(sec, rows.length, t));
-      if (this.folded[sec.id]) continue;
-      const capped = sec.id === "inactive" && !this.allSleeping && rows.length > SLEEPING_PREVIEW;
-      for (const { s, st } of capped ? rows.slice(0, SLEEPING_PREVIEW) : rows) {
-        body.push(this.spaceRow(s, st, t));
-        order.push(s.id);
-        if (sec.id !== "inactive" && s.tabs.length > 1) for (const tab of s.tabs) body.push(this.tabRow(s, tab, all, t));
-      }
-      if (capped) body.push(div().id("more").h(24).flex_none().px(10).flex().items_center().text_size(12).text_color(t.dim)
-        .rounded(6).hover((x) => x.bg(t.hover).text_color(t.foreground))
-        .on_click((_e, cx) => { this.allSleeping = true; cx.notify(); })
-        .child(`ще ${rows.length - SLEEPING_PREVIEW}`));
-      body.push(div().h(6).flex_none());
-    }
-    this.order = order;
-    return v_flex().id("propeller-agents").size_full().rounded(13).overflow_hidden().bg(t.chrome).px(6).py(8).gap(1).overflow_y_scroll()
+    // Each profile is a page; the pages lie side by side and slide like the iPhone's home
+    // screens: during a swipe they follow the fingers, then spring to the chosen one.
+    const W = this.w ?? (shared("sidebar.width") ?? 268);
+    const at = PROFILES.findIndex((p) => p.id === this.profile);
+    const pages = PROFILES.map((p, i) => {
+      const { rows, order } = this.page(byProfile[p.id], all, t);
+      if (p.id === this.profile) this.order = order;
+      return v_flex().id(`page-${p.id}`).absolute().top(0).bottom(0).w_full().left((i - at) * W + (this.drag ?? 0))
+        .spring("left", { response: 380, damping: 0.86 })
+        .px(6).pb(8).gap(1).overflow_y_scroll().children(rows);
+    });
+    return v_flex().id("propeller-agents").size_full().rounded(13).overflow_hidden().bg(t.chrome).pt(8)
       .on_mouse_down("left", () => { if (!this.dragging) this.moved = false; })
-      // A two-finger sideways swipe switches profile, as in Dia: once per swipe, and only when
-      // it is clearly sideways, so scrolling the list never flips it.
-      .on_scroll_wheel((e, cx) => {
-        // A pause also starts a new swipe: a mouse wheel reports no phases.
-        if (e.touch_phase === "started" || !this.swipe || Date.now() - this.swipe.at > 400) this.swipe = { x: 0, y: 0, done: false };
-        this.swipe.at = Date.now();
-        if (e.touch_phase === "ended" || e.touch_phase === "cancelled") { this.swipe = null; return; }
-        const sw = this.swipe;
-        sw.x += e.delta.x; sw.y += e.delta.y;
-        if (sw.done || Math.abs(sw.x) < 60 || Math.abs(sw.x) < 2 * Math.abs(sw.y)) return;
-        sw.done = true;
-        const at = PROFILES.findIndex((q) => q.id === this.profile);
-        const next = PROFILES[Math.min(PROFILES.length - 1, Math.max(0, at + (sw.x < 0 ? 1 : -1)))];
-        if (next.id !== this.profile) { this.setProfile(next.id); cx.notify(); }
-      })
+      .on_scroll_wheel((e, cx) => this.swiped(e, cx))
       // Any release ends a drag; one that left its row turns on "moved" for the targets above.
       .on_mouse_move((_e, cx) => { if (this.dragging && !this.moved && this.over) { this.moved = true; cx.notify(); } })
       .on_mouse_up("left", (_e, cx) => { if (this.dragging) { this.dragging = null; this.moved = false; this.over = null; cx.notify(); } })
-      .children(body.length > 1 ? body : [...body, div().px(10).py(6).text_size(12).text_color(t.dim).child("Тут поки порожньо")]);
+      .child(v_flex().px(6).gap(1).flex_none().child(this.top(everywhere, t)).children(this.picking ? [this.picker(t)] : []))
+      .child(div().flex_1().min_h(0).relative().overflow_hidden().children(pages));
+  }
+
+  // One profile's list: its groups, rows and tabs; order is the rows' space ids for alt-up/down.
+  page(groups, all, t) {
+    const rows = [], order = [];
+    for (const sec of SECTIONS) {
+      const list = groups[sec.id];
+      if (!list.length) continue;
+      rows.push(this.header(sec, list.length, t));
+      if (this.folded[sec.id]) continue;
+      const capped = sec.id === "inactive" && !this.allSleeping && list.length > SLEEPING_PREVIEW;
+      for (const { s, st } of capped ? list.slice(0, SLEEPING_PREVIEW) : list) {
+        rows.push(this.spaceRow(s, st, t));
+        order.push(s.id);
+        if (sec.id !== "inactive" && s.tabs.length > 1) for (const tab of s.tabs) rows.push(this.tabRow(s, tab, all, t));
+      }
+      if (capped) rows.push(div().id("more").h(24).flex_none().px(10).flex().items_center().text_size(12).text_color(t.dim)
+        .rounded(6).hover((x) => x.bg(t.hover).text_color(t.foreground))
+        .on_click((_e, cx) => { this.allSleeping = true; cx.notify(); })
+        .child(`ще ${list.length - SLEEPING_PREVIEW}`));
+      rows.push(div().h(6).flex_none());
+    }
+    if (!rows.length) rows.push(div().px(10).py(6).text_size(12).text_color(t.dim).child("Тут поки порожньо"));
+    return { rows, order };
+  }
+
+  // A two-finger sideways swipe: the pages follow it, and on release they go to the next
+  // profile if it went far enough (a quarter of the panel), else back. Only a clearly
+  // sideways gesture counts, so scrolling the list never moves the pages.
+  swiped(e, cx) {
+    if (e.bounds?.width) this.w = e.bounds.width;
+    const W = this.w ?? 268, now = Date.now();
+    if (this.lock && now < this.lock) return; // the momentum after a swipe
+    const fresh = e.touch_phase === "started" || !this.swipe || now - this.swipe.at > 400;
+    if (fresh) this.swipe = { x: 0, y: 0, axis: null, touch: e.touch_phase === "started" };
+    const sw = this.swipe;
+    sw.at = now;
+    const end = e.touch_phase === "ended" || e.touch_phase === "cancelled";
+    if (!end) { sw.x += e.delta.x; sw.y += e.delta.y; }
+    if (!sw.axis && Math.abs(sw.x) + Math.abs(sw.y) > 8) sw.axis = Math.abs(sw.x) > 2 * Math.abs(sw.y) ? "x" : "y";
+    if (sw.axis !== "x") { if (end) this.swipe = null; return; }
+    const at = PROFILES.findIndex((p) => p.id === this.profile);
+    const dir = sw.x < 0 ? 1 : -1, edge = at + dir < 0 || at + dir >= PROFILES.length;
+    // A mouse wheel (no "started"): it switches as soon as it is far enough.
+    if (end || (!sw.touch && Math.abs(sw.x) > 60)) {
+      if (!edge && Math.abs(sw.x) > (end ? W / 4 : 60)) this.setProfile(PROFILES[at + dir].id);
+      this.drag = 0;
+      this.swipe = null;
+      this.lock = now + 450;
+    } else {
+      this.drag = edge ? sw.x / 3 : Math.max(-W, Math.min(W, sw.x)); // past the last page it only gives a little
+    }
+    cx.notify();
   }
 }
