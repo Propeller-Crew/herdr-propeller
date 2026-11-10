@@ -23,7 +23,7 @@ const SLEEP = { id: "propeller-sleep", name: "Сплять", folded: true, color
 const RULES = "__rules__"; // "the space had no folder of its own": its folder came from rules
 const FOLDERS_FILE = "~/.config/herdr-space-folders.json";
 const localId = (s) => (s.machine ? s.id.slice(s.machine.length + 1) : s.id);
-const BAR = 54;
+const BAR = 44;
 // The cmux sidebar's pixel octopus: frames in ~/.config/herdr-app/mods/propeller-art/<mood>-<i>.png (sync-mods.sh).
 const OCTO = { sleep: 1, idle: 4, work: 2, needs: 2, party: 2 };
 const CLEAN_ENV = `for v in $(env | sed -nE 's/^(CLAUDECODE|CLAUDE_PID|CLAUDE_CODE_[A-Za-z0-9_]+)=.*/\\1/p' | grep -vE '^CLAUDE_CODE_(USE|SKIP|DISABLE|ENABLE|MAX|OAUTH|CLIENT|API)_'); do unset "$v"; done;`;
@@ -42,7 +42,7 @@ function left(ts) {
   const s = Math.max(0, Math.round(ts - Date.now() / 1000));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
   if (h >= 48) return `${Math.round(h / 24)} д`; // the week's reset: days are enough, and they fit
-  return h >= 24 ? `1 д ${h % 24} год` : `${h}:${String(m).padStart(2, "0")}`;
+  return h >= 24 ? `${h} год` : `${h}:${String(m).padStart(2, "0")}`;
 }
 
 export default class Propeller extends View {
@@ -392,12 +392,12 @@ ${JSON.stringify(todo, null, 1)}`;
     const expired = w.resets_at && w.resets_at * 1000 < Date.now();
     const pct = expired ? 0 : Math.round(w.used_percentage);
     const color = pct >= 90 ? t.blocked : pct >= 70 ? t.done : t.accent;
-    return h_flex().gap(8).items_center().text_size(11.5)
-      .child(div().w(50).text_color(t.muted).child(label))
+    return h_flex().gap(6).items_center().text_size(11.5)
+      .child(div().w(46).text_color(t.muted).child(label))
       .child(div().w(BAR).h(4).rounded(2).bg(t.border)
         .child(div().h(4).rounded(2).bg(color).w(Math.max(2, (BAR * Math.min(pct, 100)) / 100))))
-      .child(div().w(30).text_color(t.foreground).child(`${pct}%`))
-      .child(div().flex_1().min_w(0).text_color(t.dim).truncate().child(w.resets_at && !expired ? `↻ ${left(w.resets_at)}` : ""));
+      .child(div().w(28).text_color(t.foreground).child(`${pct}%`))
+      .child(div().flex_none().text_color(t.dim).child(w.resets_at && !expired ? `↻${left(w.resets_at)}` : ""));
   }
 
   render() {

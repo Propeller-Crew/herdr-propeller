@@ -7,7 +7,7 @@ d = json.load(open(os.path.join(HERE, "layout-propeller.json")))
 # Herdr can't make its window see-through (no transparency or blur in 0.1.x), so no picture
 # behind the cards: a flat teal-tinted canvas and see-through cards on it. The glass colors live
 # in the two themes (colors in a layout apply to both appearances), so it follows the system.
-d.pop("background", None)
+d["background"] = "canvas"  # the window behind the cards: each theme's own teal
 d.pop("colors", None)
 d["theme"] = {"light": "propeller-glass-light", "dark": "propeller-glass-dark"}
 d["terminal_opacity"] = 0

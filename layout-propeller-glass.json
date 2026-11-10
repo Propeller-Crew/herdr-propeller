@@ -194,6 +194,7 @@
       "gap": 12
     }
   ],
+  "background": "canvas",
   "terminal_padding": [
     16,
     14
