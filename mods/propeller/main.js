@@ -46,7 +46,9 @@ export default class Propeller extends View {
     // pending: terminal -> Claude conversation to fork into it the first time you open it
     // (from import-cmux.py); quiet: space id -> ms before which tab changes don't count as
     // activity (the import itself made them).
-    this.state = { seen: {}, claude: {}, settled: {}, pending: {}, quiet: {} };
+    // dozed: spaces you dragged into "Сплять" yourself -> "here" while you're still in them,
+    // "away" once you've left; opening one again (or its agent working) wakes it.
+    this.state = { seen: {}, claude: {}, settled: {}, pending: {}, quiet: {}, dozed: {} };
     this.saved = "";
     this.limits = null;
     this.busy = false;
@@ -149,6 +151,13 @@ export default class Propeller extends View {
   trackActivity() {
     const now = Date.now();
     for (const s of spaces()) {
+      const d = this.state.dozed[s.id];
+      if (d) {
+        if (!s.active) this.state.dozed[s.id] = "away";
+        else if (d === "away") delete this.state.dozed[s.id];
+        if (s.status === "working" || s.status === "blocked") delete this.state.dozed[s.id];
+        if (this.state.dozed[s.id]) continue; // asleep by hand: being looked at doesn't wake it yet
+      }
       const quiet = this.state.quiet[s.id] ?? 0;
       const changed = Math.max(0, ...s.tabs.map((t) => (t.changed_at ?? 0) > quiet ? t.changed_at : 0));
       const last = this.state.seen[s.id] ?? now;
@@ -156,12 +165,14 @@ export default class Propeller extends View {
     }
     const ids = new Set(spaces().map((s) => s.id));
     for (const id of Object.keys(this.state.seen)) if (!ids.has(id)) delete this.state.seen[id];
+    for (const id of Object.keys(this.state.dozed)) if (!ids.has(id)) delete this.state.dozed[id];
     for (const id of Object.keys(this.state.quiet)) if (!ids.has(id) || this.state.quiet[id] < now - DAY) delete this.state.quiet[id];
     const live = new Set(terminals().map((t) => t.address));
     if (live.size) for (const t of Object.keys(this.state.pending)) if (!live.has(t)) delete this.state.pending[t];
   }
 
   sleeping(s) {
+    if (this.state.dozed[s.id]) return true;
     return !ACTIVE.has(s.status) && !s.active && Date.now() - (this.state.seen[s.id] ?? Date.now()) > DAY;
   }
 
@@ -186,6 +197,20 @@ export default class Propeller extends View {
       let changed = false;
       for (const s of list) {
         const id = localId(s);
+        if (data.of[id] !== SLEEP.id && s.id in this.state.settled) {
+          // Dragged out of "Сплять" by hand: awake from now, where it was put.
+          delete this.state.settled[s.id];
+          delete this.state.dozed[s.id];
+          this.state.seen[s.id] = Date.now();
+          for (const t of s.tabs) if (t.settled) run("tab.unsettle", { id: t.id });
+          continue;
+        }
+        if (data.of[id] === SLEEP.id && !(s.id in this.state.settled)) {
+          // Dragged into "Сплять" by hand: put it to sleep now, back to its rules' folder on waking.
+          this.state.settled[s.id] = RULES;
+          this.state.dozed[s.id] = s.active ? "here" : "away";
+          this.state.seen[s.id] = Date.now() - DAY - 1000;
+        }
         if (this.sleeping(s)) {
           if (data.of[id] !== SLEEP.id) {
             this.state.settled[s.id] = id in data.of ? data.of[id] : RULES;
