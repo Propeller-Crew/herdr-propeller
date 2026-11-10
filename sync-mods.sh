@@ -24,6 +24,7 @@ link() { ln -sfn "$1" "$APP/mods/$(basename "$1")"; }
 # rsync into the same folder (not rm + cp): Herdr watches the folder it loaded and misses a replaced one.
 copy() { d="$APP/mods/$(basename "$1")"; [ -L "$d" ] && rm "$d"; mkdir -p "$d"; rsync -a --delete --exclude jsconfig.json --exclude "*.d.ts" "$1/" "$d/"; }
 link "$HERE/mods/propeller"
+link "$HERE/mods/propeller-agents"
 copy "$HERE/mods/space-folders"
 for m in "$EXT"/herdr-mods/islands/mods/islands-*; do [ "$(basename "$m")" = islands-tabs ] || copy "$m"; done
 copy "$HERE/mods/islands-tabs"
@@ -35,7 +36,9 @@ for t in "$HERE"/themes/*.json; do rm -f "$APP/themes/$(basename "$t")"; cp "$t"
 python3 "$HERE/make-glass.py"
 cp "$HERE/layout-propeller.json" "$APP/layouts/propeller.json"
 cp "$HERE/layout-propeller-glass.json" "$APP/layouts/propeller-glass.json"
-echo ok
 # The cmux sidebar's pixel octopus (frames from cmux-agent-status), drawn by the propeller card.
 # Images load only from the app's own folder, not through the symlinked mod.
-rm -rf "$APP/octopus"; mkdir -p "$APP/mods/propeller-art" && rsync -a --delete "$HERE/octopus/" "$APP/mods/propeller-art/"
+rm -rf "$APP/octopus"; mkdir -p "$APP/mods/propeller-art" && rsync -a --delete --exclude "*.svg" "$HERE/octopus/" "$APP/mods/propeller-art/"
+# Lucide icons (ISC) for the agents list: section pills, state marks.
+rsync -a "$HERE/art/" "$APP/mods/propeller-art/"
+echo ok

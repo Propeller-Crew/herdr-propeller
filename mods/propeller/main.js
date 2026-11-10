@@ -381,6 +381,8 @@ ${JSON.stringify(todo, null, 1)}`;
     if (text === this.saved) return;
     await fs.mkdir(`${home()}/.config/herdr-app/data`, { recursive: true });
     await fs.writeFile(statePath(), text);
+    // The agents list (propeller-agents) sorts and labels by when each space last did something.
+    setShared("propeller.seen", this.state.seen);
     this.saved = text;
   }
 

@@ -46,7 +46,7 @@
               "id": "agents",
               "type": "block",
               "content": {
-                "mod": "islands-agents"
+                "mod": "propeller-agents"
               },
               "size": {
                 "weight": 1
