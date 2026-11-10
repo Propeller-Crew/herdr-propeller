@@ -63,6 +63,7 @@ export default class Propeller extends View {
       const ask = shared("space.icons.ask");
       if (ask && ask !== this.asked && !shared("space.icons.busy")) {
         this.asked = ask;
+        setShared("space.icons.ask", null); // handled: a reload doesn't ask again
         cx.spawn(async () => { await this.pickIcons(); });
       }
     });
@@ -153,7 +154,9 @@ Reply with only one JSON object: {"<id>": {"image": "…"} or {"glyph": "…", "
 ${JSON.stringify(todo, null, 1)}`;
     try {
       await fs.mkdir(dir, { recursive: true });
-      const r = await exec("sh", ["-c", `${CLEAN_ENV} cd ~ && claude -p "$1" --model sonnet --output-format json --allowedTools "Read,Glob,Grep,Bash(sips:*),Bash(ls:*),Bash(find:*),Bash(curl:*)" < /dev/null`, "sh", prompt], { timeout: 600000 });
+      // zsh -ic: the app started from Spotlight has a bare PATH; claude lives where ~/.zshrc (nvm) puts it.
+      const r = await exec("/bin/zsh", ["-ic", `${CLEAN_ENV} cd ~ && claude -p "$1" --model sonnet --output-format json --allowedTools "Read,Glob,Grep,Bash(sips:*),Bash(ls:*),Bash(find:*),Bash(curl:*)" < /dev/null`, "zsh", prompt], { timeout: 600000 });
+      if (r.code !== 0) throw new Error(`claude exited ${r.code}: ${(r.stderr || r.stdout).slice(-300)}`);
       const text = JSON.parse(r.stdout).result ?? "";
       const picked = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
       const next = { ...(shared("space.icons") ?? {}) };
