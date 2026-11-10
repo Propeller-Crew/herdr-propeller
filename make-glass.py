@@ -5,24 +5,12 @@ import json, os
 HERE = os.path.dirname(os.path.abspath(__file__))
 d = json.load(open(os.path.join(HERE, "layout-propeller.json")))
 # Herdr can't make its window see-through (no transparency or blur in 0.1.x), so no picture
-# behind the cards: a flat teal-tinted canvas and see-through teal cards on it.
-d["background"] = "#0a171a"
-d["theme"] = "propeller-dusk"
+# behind the cards: a flat teal-tinted canvas and see-through cards on it. The glass colors live
+# in the two themes (colors in a layout apply to both appearances), so it follows the system.
+d.pop("background", None)
+d.pop("colors", None)
+d["theme"] = {"light": "propeller-glass-light", "dark": "propeller-glass-dark"}
 d["terminal_opacity"] = 0
-d["colors"] = {
-    "chrome": "#12272b99",      # sidebar cards and bars
-    "background": "#0e21248f",  # terminal cards
-    "surface": "#ffffff0d",
-    "hover": "#ffffff1a",
-    "selected": "#ffffff21",
-    "border": "#ffffff1f",
-    "canvas": "#00000000",
-    "popover": "#122b30f2",     # menus stay nearly solid so they read over anything
-    "foreground": "#b3bdd6",
-    "muted": "#8590a8",
-    "dim": "#5f6a80",
-    "accent": "#d89470",
-}
 d["preview"] = "layouts/islands.svg"
 json.dump(d, open(os.path.join(HERE, "layout-propeller-glass.json"), "w"), indent=2)
 print("glass ok")
