@@ -11,7 +11,7 @@
 // 3. Claude subscription limits (5 h and weekly) from ~/.claude/rate-limits.json,
 //    which our Claude status line writes on every turn.
 
-import { View, div } from "gpui-kit";
+import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, terminals, panes, hc, exec, theme, run, home, shared, setShared } from "herdr";
 import * as fs from "fs/promises";
@@ -23,7 +23,9 @@ const SLEEP = { id: "propeller-sleep", name: "Сплять", folded: true, color
 const RULES = "__rules__"; // "the space had no folder of its own": its folder came from rules
 const FOLDERS_FILE = "~/.config/herdr-space-folders.json";
 const localId = (s) => (s.machine ? s.id.slice(s.machine.length + 1) : s.id);
-const BAR = 70;
+const BAR = 54;
+// The cmux sidebar's pixel octopus: frames in ~/.config/herdr-app/mods/propeller-art/<mood>-<i>.png (sync-mods.sh).
+const OCTO = { sleep: 1, idle: 4, work: 2, needs: 2, party: 2 };
 const CLEAN_ENV = `for v in $(env | sed -nE 's/^(CLAUDECODE|CLAUDE_PID|CLAUDE_CODE_[A-Za-z0-9_]+)=.*/\\1/p' | grep -vE '^CLAUDE_CODE_(USE|SKIP|DISABLE|ENABLE|MAX|OAUTH|CLIENT|API)_'); do unset "$v"; done;`;
 const ACTIVE = new Set(["blocked", "done", "working"]);
 
@@ -35,7 +37,8 @@ const machineOf = (addr) => (addr.includes("/") ? addr.split("/")[0] : null);
 function left(ts) {
   const s = Math.max(0, Math.round(ts - Date.now() / 1000));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-  return h >= 24 ? `${Math.floor(h / 24)} д ${h % 24} год` : `${h}:${String(m).padStart(2, "0")}`;
+  if (h >= 48) return `${Math.round(h / 24)} д`; // the week's reset: days are enough, and they fit
+  return h >= 24 ? `1 д ${h % 24} год` : `${h}:${String(m).padStart(2, "0")}`;
 }
 
 export default class Propeller extends View {
@@ -67,6 +70,8 @@ export default class Propeller extends View {
         cx.spawn(async () => { await this.pickIcons(); });
       }
     });
+    // The octopus: a new frame each second while its mood has more than one.
+    cx.timer.every(1000, (cx) => { if (OCTO[this.mood()] > 1) cx.notify(); });
     cx.timer.every(15000, (cx) => cx.spawn(async (cx) => { await this.tick(); cx.notify(); }));
     cx.timer.every(30000, (cx) => cx.spawn(async (cx) => { await this.readLimits(); cx.notify(); }));
   }
@@ -322,6 +327,36 @@ ${JSON.stringify(todo, null, 1)}`;
     for (const s of want) run("space.move", { id: s.id, index: all.length });
   }
 
+  // "Звільнити пам'ять": every idle Claude quits except the one in front of you, like sleeping does;
+  // each comes back in the same conversation when you open its space.
+  freeMemory() {
+    const active = spaces().find((s) => s.active);
+    const here = new Set(active ? active.tabs.map((t) => t.id) : []);
+    const status = new Map(terminals().map((t) => [t.address, t.status]));
+    let n = 0;
+    for (const p of panes()) {
+      if (!p.terminal || here.has(p.tab)) continue;
+      const c = this.state.claude[p.terminal];
+      if (!c || this.state.pending[p.terminal] || status.get(p.terminal) !== "idle") continue;
+      this.state.pending[p.terminal] = { session: c.session };
+      delete this.state.claude[p.terminal];
+      hc(["send", p.terminal, "/exit"]).catch(() => null);
+      n += 1;
+    }
+    this.freed = { n, at: Date.now() };
+  }
+
+  // What the octopus does: waves when an agent waits on you, spins its propeller while one
+  // works, celebrates a fresh result, blinks if anything happened in the last half hour, else sleeps.
+  mood() {
+    const st = spaces().map((s) => s.status);
+    if (st.includes("blocked")) return "needs";
+    if (st.includes("working")) return "work";
+    if (st.includes("done")) return "party";
+    const last = Math.max(0, ...Object.values(this.state.seen));
+    return Date.now() - last < 1800000 ? "idle" : "sleep";
+  }
+
   // A sleeping space's idle Claudes quit (cmux did the same), so they hold no memory and leave
   // the Agents list; opening the space brings each back in the same conversation.
   quitClaude(s) {
@@ -352,19 +387,30 @@ ${JSON.stringify(todo, null, 1)}`;
     const pct = expired ? 0 : Math.round(w.used_percentage);
     const color = pct >= 90 ? t.blocked : pct >= 70 ? t.done : t.accent;
     return h_flex().gap(8).items_center().text_size(11.5)
-      .child(div().w(52).text_color(t.muted).child(label))
+      .child(div().w(50).text_color(t.muted).child(label))
       .child(div().w(BAR).h(4).rounded(2).bg(t.border)
         .child(div().h(4).rounded(2).bg(color).w(Math.max(2, (BAR * Math.min(pct, 100)) / 100))))
-      .child(div().w(34).text_color(t.foreground).child(`${pct}%`))
-      .child(div().w(70).text_color(t.dim).truncate().child(w.resets_at && !expired ? `↻ ${left(w.resets_at)}` : ""));
+      .child(div().w(30).text_color(t.foreground).child(`${pct}%`))
+      .child(div().flex_1().min_w(0).text_color(t.dim).truncate().child(w.resets_at && !expired ? `↻ ${left(w.resets_at)}` : ""));
   }
 
   render() {
     const t = theme();
     const lim = this.limits ?? {};
     const rows = [this.limitRow(t, "5 год", lim.five_hour), this.limitRow(t, "Тиждень", lim.seven_day)].filter(Boolean);
-    return v_flex().id("propeller").size_full().rounded(13).overflow_hidden().px(14).py(8).gap(6).bg(t.chrome)
-      .child(div().text_size(11).text_color(t.dim).child("Ліміти Claude"))
-      .children(rows.length ? rows : [div().text_size(11.5).text_color(t.dim).child("ще нема даних")]);
+    const mood = this.mood();
+    const frame = Math.floor(Date.now() / 1000) % OCTO[mood];
+    const freed = this.freed && Date.now() - this.freed.at < 4000 ? this.freed : null;
+    return h_flex().id("propeller").size_full().rounded(13).overflow_hidden().pl(10).pr(12).gap(10).items_center().bg(t.chrome)
+      .child(image(`mods/propeller-art/${mood}-${frame}.png`).size(44).flex_none())
+      .child(v_flex().flex_1().min_w(0).gap(6)
+        .child(h_flex().items_center().text_size(11)
+          .child(div().flex_1().text_color(t.dim).child("Ліміти Claude"))
+          .child(div().id("free-memory").flex_none().px(5).rounded(4).text_color(t.dim)
+            .hover((s) => s.bg(t.hover).text_color(t.foreground))
+            .on_click((_e, cx) => { this.freeMemory(); cx.notify(); })
+            .child(freed ? `закрито ${freed.n}` : "звільнити пам'ять")))
+        .children(rows.length ? rows : [div().text_size(11.5).text_color(t.dim).child("ще нема даних")]));
   }
+
 }

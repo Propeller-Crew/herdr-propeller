@@ -36,3 +36,6 @@ python3 "$HERE/make-glass.py"
 cp "$HERE/layout-propeller.json" "$APP/layouts/propeller.json"
 cp "$HERE/layout-propeller-glass.json" "$APP/layouts/propeller-glass.json"
 echo ok
+# The cmux sidebar's pixel octopus (frames from cmux-agent-status), drawn by the propeller card.
+# Images load only from the app's own folder, not through the symlinked mod.
+rm -rf "$APP/octopus"; mkdir -p "$APP/mods/propeller-art" && rsync -a --delete "$HERE/octopus/" "$APP/mods/propeller-art/"
