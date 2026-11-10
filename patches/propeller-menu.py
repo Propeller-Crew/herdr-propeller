@@ -38,7 +38,7 @@ function propellerItems(id) {
 const placeOf = (id) => { const s = spaces().find((x) => x.id === id); return s ? place(s) : undefined; };
 function propellerRun(command, args) {
   if (command === "propeller.free") return setShared("propeller.free", Date.now());
-  if (command === "propeller.colors") return openOverlay({ mod: "propeller-colors", kind: "dialog", width: 300, height: 400 });
+  if (command === "propeller.colors") return openOverlay({ mod: "propeller-colors", kind: "dialog", width: 300, height: 500 });
   if (command === "propeller.update") return setShared("propeller.updateNow", Date.now());
   const s = spaces().find((x) => x.id === args.id);
   if (!s) return;

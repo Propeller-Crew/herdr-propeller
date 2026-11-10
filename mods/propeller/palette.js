@@ -1,5 +1,6 @@
 // Our glass theme in any hue: the teal one (hue 175) is the reference, every colour is that
-// teal turned to the chosen hue. c scales the saturation: 1 coloured, 0 graphite.
+// teal turned to the chosen hue. c scales the saturation: 1 as the teal, 0 graphite, up to 1.6.
+// l moves the backgrounds' lightness, -1 to 1 (0 as the teal); the text stays put, so it stays readable.
 // The accent sits opposite the canvas on the wheel (orange for teal), and stays orange for graphite.
 
 const hex = (n) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, "0");
@@ -21,19 +22,20 @@ export const PRESETS = [
 ];
 
 // What the picker shows for a choice: a mid-tone of its canvas.
-export const swatch = ({ h, c }) => hsl(h, 10 + 45 * c, 50);
+export const swatch = ({ h, c, l = 0 }) => hsl(h, Math.min(100, 10 + 45 * c), 50 + 8 * l);
 
-export function colors({ h, c }, dark) {
-  const d = h - 175, s = (x) => x * c;
+export function colors({ h, c, l = 0 }, dark) {
+  const d = h - 175, s = (x) => Math.min(100, x * c);
+  const L = (x, k) => Math.max(0, Math.min(100, x + k * l));
   const accent = c ? (dark ? hsl(h + 206, 57, 64) : hsl(h + 202, 55, 52)) : dark ? "#d89470" : "#c8663f";
   if (dark) {
     const ink = h + 48; // the text's cool grey, turned with the rest
     return {
-      canvas: hsl(191 + d, s(44), 7),
-      chrome: hsl(190 + d, s(41), 12, "99"),
-      background: hsl(188 + d, s(44), 10, "8f"),
+      canvas: hsl(191 + d, s(44), L(7, 6)),
+      chrome: hsl(190 + d, s(41), L(12, 6), "99"),
+      background: hsl(188 + d, s(44), L(10, 6), "8f"),
       surface: "#ffffff0d", hover: "#ffffff1a", selected: "#ffffff21", border: "#ffffff1f",
-      popover: hsl(190 + d, s(45), 13, "f2"),
+      popover: hsl(190 + d, s(45), L(13, 5), "f2"),
       foreground: hsl(ink, 10 + s(20), 77),
       muted: hsl(ink - 2, 6 + s(11), 59),
       dim: hsl(ink - 3, 5 + s(10), 44),
@@ -42,7 +44,7 @@ export function colors({ h, c }, dark) {
   }
   const tint = hsl(180 + d, s(66), 17);
   return {
-    canvas: hsl(173 + d, 6 + s(24), 84),
+    canvas: hsl(173 + d, 6 + s(24), L(84, 9)),
     chrome: "#ffffff9e",
     background: hsl(180 + d, s(33), 99, "c7"),
     surface: tint + "0a", hover: tint + "12", selected: tint + "1f", border: tint + "1f",

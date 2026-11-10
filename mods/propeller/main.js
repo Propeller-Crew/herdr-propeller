@@ -89,7 +89,7 @@ export default class Propeller extends View {
       const pick = shared("propeller.colors.pick");
       if (pick && pick.at !== this.pickAt) {
         this.pickAt = pick.at;
-        cx.spawn(async () => { await this.paint({ h: pick.h, c: pick.c }, true); });
+        cx.spawn(async () => { await this.paint({ h: pick.h, c: pick.c, l: pick.l ?? 0 }, true); });
       }
       // "Звільнити RAM" from the card's menu (propeller-menu).
       const free = shared("propeller.free");
