@@ -74,6 +74,13 @@ export default class Propeller extends View {
         setShared("space.icons.ask", null); // handled: a reload doesn't ask again
         cx.spawn(async () => { await this.pickIcons(); });
       }
+      // "Оновити" from the card's menu.
+      const up = shared("propeller.updateNow");
+      if (up && up !== this.updateAsked) {
+        this.updateAsked = up;
+        setShared("propeller.updateNow", null);
+        cx.spawn(async (cx) => { cx.notify(); await this.update(); cx.notify(); });
+      }
       // "Звільнити RAM" from the card's menu (propeller-menu).
       const free = shared("propeller.free");
       if (free && free !== this.freeAsked) {
@@ -87,6 +94,41 @@ export default class Propeller extends View {
     cx.timer.every(1000, (cx) => { if (OCTO[this.mood()] > 1) cx.notify(); });
     cx.timer.every(15000, (cx) => cx.spawn(async (cx) => { await this.tick(); cx.notify(); }));
     cx.timer.every(30000, (cx) => cx.spawn(async (cx) => { await this.readLimits(); cx.notify(); }));
+    // Updates: a look at GitHub a minute after start, then every 6 hours.
+    cx.timer.after(60000, (cx) => cx.spawn(async (cx) => { await this.checkUpdate(); cx.notify(); }));
+    cx.timer.every(6 * 3600 * 1000, (cx) => cx.spawn(async (cx) => { await this.checkUpdate(); cx.notify(); }));
+  }
+
+  // --- Updates of this repo ------------------------------------------------------
+  // The repo is where the mod's symlink points (install.sh links it from the clone).
+  async repo() {
+    if (this.repoDir) return this.repoDir;
+    const r = await exec("/usr/bin/readlink", [`${home()}/.config/herdr-app/mods/propeller`]);
+    const dir = r.code === 0 && r.stdout.trim().replace(/\/mods\/propeller\/?$/, "");
+    return (this.repoDir = dir && dir.startsWith("/") ? dir : null);
+  }
+
+  // How many commits GitHub has that this clone doesn't. Shown on the card, offered in its menu.
+  async checkUpdate() {
+    const dir = await this.repo();
+    if (!dir) return;
+    const sh = (c) => exec("/bin/zsh", ["-ic", `GIT_TERMINAL_PROMPT=0 ${c}`], { cwd: dir, timeout: 60000 });
+    if ((await sh("git fetch -q origin")).code !== 0) return;
+    const r = await sh("git rev-list --count HEAD..@{u}");
+    const n = r.code === 0 ? parseInt(r.stdout.trim(), 10) || 0 : 0;
+    this.behind = n;
+    setShared("propeller.update", n || null);
+  }
+
+  // git pull, then install.sh (which reloads the mods, this one too).
+  async update() {
+    const dir = await this.repo();
+    if (!dir || this.updating) return;
+    this.updating = true;
+    const r = await exec("/bin/zsh", ["-ic", "GIT_TERMINAL_PROMPT=0 git pull -q --ff-only && ./install.sh"], { cwd: dir, timeout: 300000 });
+    this.updating = false;
+    if (r.code === 0) { this.behind = 0; setShared("propeller.update", null); }
+    else this.updateError = { at: Date.now(), text: (r.stderr || r.stdout).trim().split("\n").pop() };
   }
 
   // ~/.config/herdr-propeller.json (yours, not in the repo): the profiles' folders and hints for
@@ -449,8 +491,12 @@ ${JSON.stringify(todo, null, 1)}`;
     // Right-click the card: its menu (free RAM), so the card itself stays quiet.
     return h_flex().id("propeller").size_full().rounded(13).overflow_hidden().pl(10).pr(12).gap(12).items_center().bg(t.chrome)
       .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 60, props: { tab: "propeller" } }))
-      .child(octo)
-      .children(freed ? [div().text_size(11.5).text_color(t.muted).child(`закрито Claude: ${freed.n}`)]
+      .child(div().relative().flex_none().child(octo)
+        .when(this.behind > 0 || this.updating, (el) => el.child(div().absolute().top(-2).right(-2).size(16).rounded(8).bg(t.accent)
+          .flex().items_center().justify_center().child(svg(`${ART}/arrow-down-to-line.svg`).size(10).text_color("#ffffff")))))
+      .children(this.updating ? [div().text_size(11.5).text_color(t.muted).child("оновлюю…")]
+        : this.updateError && Date.now() - this.updateError.at < 15000 ? [div().flex_1().min_w(0).text_size(11).text_color(t.blocked).child(`не оновилось: ${this.updateError.text}`)]
+        : freed ? [div().text_size(11.5).text_color(t.muted).child(`закрито Claude: ${freed.n}`)]
         : gauges.length ? gauges : [div().text_size(11.5).text_color(t.dim).child("ліміти: ще нема даних")]);
   }
 

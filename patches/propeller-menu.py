@@ -38,6 +38,7 @@ function propellerItems(id) {
 const placeOf = (id) => { const s = spaces().find((x) => x.id === id); return s ? place(s) : undefined; };
 function propellerRun(command, args) {
   if (command === "propeller.free") return setShared("propeller.free", Date.now());
+  if (command === "propeller.update") return setShared("propeller.updateNow", Date.now());
   const s = spaces().find((x) => x.id === args.id);
   if (!s) return;
   if (command === "propeller.profile") setShared("propeller.profile", { ...(shared("propeller.profile") ?? {}), [s.id]: args.to });
@@ -64,9 +65,13 @@ rep('''.child(svg(menuIcon(it[1]))''', '''.child(svg(menuIcon(it[1], it[2]))''')
 rep('''    else run(it[1], it[2]);''', '''    else if (it[1].startsWith("propeller.")) propellerRun(it[1], it[2]);
     else run(it[1], it[2]);''')
 rep('''    case "tab":''', '''    case "propeller":
-      return [["Звільнити RAM", "propeller.free", {}]];
+      return [
+        ...(shared("propeller.update") ? [["Оновити herdr-propeller", "propeller.update", {}]] : []),
+        ["Звільнити RAM", "propeller.free", {}],
+      ];
     case "tab":''')
 rep('''  if (command === "propeller.sleep") return''', '''  if (command === "propeller.free") return "mods/propeller-art/moon.svg";
+  if (command === "propeller.update") return "mods/propeller-art/arrow-down-to-line.svg";
   if (command === "propeller.sleep") return''')
 (dst / "main.js").write_text(s)
 shutil.copy(src / "mod.json", dst / "mod.json")

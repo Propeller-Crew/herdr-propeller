@@ -31,6 +31,14 @@ import json, os, sys
 p = sys.argv[1]; d = json.load(open(p)) if os.path.exists(p) else {}
 d["telemetry"] = False; json.dump(d, open(p, "w"), indent=2)
 PY
-# Switch to our layout if Herdr is running (it only talks to the open window).
-herdr-app do layout.switch '{"name":"propeller-glass"}' >/dev/null 2>&1 && echo "layout: propeller-glass" || echo "Open Herdr and pick the propeller-glass layout (cmd-shift-l)."
+# Reload the mods if Herdr is running (it only talks to the open window): away to main and back to
+# the layout that was open; on the first install, to ours.
+now=$(herdr-app status 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("layout",""))' 2>/dev/null || true)
+case "$now" in propeller*) to=$now ;; *) to=propeller-glass ;; esac
+if [ -n "$now" ]; then
+  herdr-app do layout.switch '{"name":"main"}' >/dev/null 2>&1 || true
+  herdr-app do layout.switch "{\"name\":\"$to\"}" >/dev/null 2>&1 && echo "layout: $to"
+else
+  echo "Open Herdr and pick the propeller-glass layout (cmd-shift-l)."
+fi
 echo "installed"
