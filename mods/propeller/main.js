@@ -11,9 +11,10 @@
 // 3. Claude subscription limits (5 h and weekly) from ~/.claude/rate-limits.json,
 //    which our Claude status line writes on every turn.
 
-import { View, div, image } from "gpui-kit";
+import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, terminals, panes, hc, exec, theme, run, home, shared, setShared, layout } from "herdr";
+import { spaces, terminals, panes, hc, exec, theme, run, home, shared, setShared, layout, openOverlay } from "herdr";
+const ART = "mods/propeller-art";
 import * as fs from "fs/promises";
 
 const DAY = 24 * 3600 * 1000;
@@ -72,6 +73,14 @@ export default class Propeller extends View {
         this.asked = ask;
         setShared("space.icons.ask", null); // handled: a reload doesn't ask again
         cx.spawn(async () => { await this.pickIcons(); });
+      }
+      // "Звільнити RAM" from the card's menu (propeller-menu).
+      const free = shared("propeller.free");
+      if (free && free !== this.freeAsked) {
+        this.freeAsked = free;
+        setShared("propeller.free", null);
+        this.freeMemory();
+        cx.notify();
       }
     });
     // The octopus: a new frame each second while its mood has more than one.
@@ -387,23 +396,28 @@ ${JSON.stringify(todo, null, 1)}`;
   }
 
   // --- 3. The card ---------------------------------------------------------------
-  limitRow(t, label, w) {
+  // One limit as a ring: how much is used, the percent inside, and when it resets under it.
+  gauge(t, label, w) {
     if (!w || w.used_percentage == null) return null;
     const expired = w.resets_at && w.resets_at * 1000 < Date.now();
     const pct = expired ? 0 : Math.round(w.used_percentage);
     const color = pct >= 90 ? t.blocked : pct >= 70 ? t.done : t.accent;
-    return h_flex().gap(6).items_center().text_size(11.5)
-      .child(div().w(52).flex_none().whitespace_nowrap().text_color(t.muted).child(label))
-      .child(div().w(BAR).h(4).rounded(2).bg(t.border)
-        .child(div().h(4).rounded(2).bg(color).w(Math.max(2, (BAR * Math.min(pct, 100)) / 100))))
-      .child(div().w(28).text_color(t.foreground).child(`${pct}%`))
-      .child(div().flex_none().text_color(t.dim).child(w.resets_at && !expired ? `↻${left(w.resets_at)}` : ""));
+    const step = pct > 0 ? Math.min(100, Math.max(5, Math.round(pct / 5) * 5)) : 0;
+    const R = 38;
+    return h_flex().gap(7).items_center().flex_none()
+      .child(div().size(R).flex_none().relative()
+        .child(svg(`${ART}/ring-track.svg`).absolute().inset_0().size(R).text_color(t.border))
+        .when(step > 0, (el) => el.child(svg(`${ART}/ring-${step}.svg`).absolute().inset_0().size(R).text_color(color)))
+        .child(h_flex().absolute().inset_0().items_center().justify_center().text_size(10.5).font_bold().text_color(t.foreground).child(`${pct}%`)))
+      .child(v_flex().gap(1).text_size(11)
+        .child(div().whitespace_nowrap().text_color(t.muted).child(label))
+        .child(div().whitespace_nowrap().text_color(t.dim).child(w.resets_at && !expired ? `↻ ${left(w.resets_at)}` : "")));
   }
 
   render() {
     const t = theme();
     const lim = this.limits ?? {};
-    const rows = [this.limitRow(t, "5 год", lim.five_hour), this.limitRow(t, "Тиждень", lim.seven_day)].filter(Boolean);
+    const gauges = [this.gauge(t, "5 год", lim.five_hour), this.gauge(t, "Тиждень", lim.seven_day)].filter(Boolean);
     const mood = this.mood();
     const frame = Math.floor(Date.now() / 1000) % OCTO[mood];
     const freed = this.freed && Date.now() - this.freed.at < 4000 ? this.freed : null;
@@ -417,16 +431,12 @@ ${JSON.stringify(todo, null, 1)}`;
           run("layout.resize", { id: "sidebar", px: shared("sidebar.width") ?? 268 });
         }).child(octo);
     }
-    return h_flex().id("propeller").size_full().rounded(13).overflow_hidden().pl(10).pr(12).gap(10).items_center().bg(t.chrome)
+    // Right-click the card: its menu (free RAM), so the card itself stays quiet.
+    return h_flex().id("propeller").size_full().rounded(13).overflow_hidden().pl(10).pr(12).gap(12).items_center().bg(t.chrome)
+      .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 60, props: { tab: "propeller" } }))
       .child(octo)
-      .child(v_flex().flex_1().min_w(0).gap(6)
-        .child(h_flex().items_center().text_size(11)
-          .child(div().flex_1().text_color(t.dim).child("Ліміти Claude"))
-          .child(div().id("free-memory").flex_none().px(7).py(1).rounded(6).border(1).border_color(t.border).text_size(10.5).text_color(t.muted)
-            .hover((s) => s.bg(t.hover).text_color(t.foreground))
-            .on_click((_e, cx) => { this.freeMemory(); cx.notify(); })
-            .child(freed ? `закрито ${freed.n}` : "🧹 звільнити RAM")))
-        .children(rows.length ? rows : [div().text_size(11.5).text_color(t.dim).child("ще нема даних")]));
+      .children(freed ? [div().text_size(11.5).text_color(t.muted).child(`закрито Claude: ${freed.n}`)]
+        : gauges.length ? gauges : [div().text_size(11.5).text_color(t.dim).child("ліміти: ще нема даних")]);
   }
 
 }
