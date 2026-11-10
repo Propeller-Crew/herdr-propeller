@@ -7,13 +7,15 @@ original keeps its own conversation and both apps can run side by side.
 
 Which Claude conversation a cmux tab had:
 1. cmux's hook record for that tab (~/.cmuxterm/claude-hook-sessions.json);
-2. else the workspace's "last prompt @<epoch>" (our cmux sidebar writes it) matched to
+2. else cmux's agent journal (the newest session that started in that tab), when its
+   transcript still exists;
+3. else the workspace's "last prompt @<epoch>" (our cmux sidebar writes it) matched to
    the transcript that has a user message at that second.
 
 Run it from anywhere while Herdr is open (it only talks to the window; terminals start
 in herdr-core, whose environment stays clean). --dry: print what it would make.
 """
-import datetime, glob, json, os, re, subprocess, sys, time
+import datetime, glob, json, os, re, sqlite3, subprocess, sys, time
 
 H = os.path.expanduser("~")
 DRY = "--dry" in sys.argv
@@ -75,6 +77,21 @@ tree = json.loads(sh("cmux", "tree", "--json", "--all", "--id-format", "both"))
 recs = json.loads(sh("cmux", "sessions", "list", "--agent", "claude", "--json", "--all"))["sessions"]
 saved = {w["workspaceId"]: w for w in walk(json.load(open(f"{H}/Library/Application Support/cmux/session-com.cmuxterm.app.json")))}
 
+JOURNAL = f"{H}/Library/Application Support/cmux/agent-journal-com.cmuxterm.app.sqlite3"
+db = sqlite3.connect(f"file:{JOURNAL}?mode=ro", uri=True) if os.path.exists(JOURNAL) else None
+
+
+def by_journal(surface):
+    if not db or not surface:
+        return None
+    rows = db.execute("select session_id from agent_journal where surface_id=? and session_id is not null and is_subagent=0 "
+                      "group by session_id order by max(occurred_at_ms) desc", (surface,)).fetchall()
+    for (sid,) in rows:
+        if glob.glob(f"{H}/.claude/projects/*/{sid}.jsonl"):
+            return sid
+    return None
+
+
 plan, taken = [], set()
 for win in tree["windows"]:
     for ws in win["workspaces"]:
@@ -88,7 +105,8 @@ for win in tree["windows"]:
             cwd = (p.get("terminal") or {}).get("workingDirectory") or p.get("directory") or H
             r = hooks.get(p.get("stableSurfaceId")) or hooks.get(p["id"])
             title = p.get("customTitle") or p.get("title") or ""
-            tabs.append({"name": "" if re.match(r"^[~/…]", title) else title, "cwd": cwd, "session": r and r["session_id"]})
+            sid = (r and r["session_id"]) or by_journal(p.get("stableSurfaceId")) or by_journal(p["id"])
+            tabs.append({"name": "" if re.match(r"^[~/…]", title) else title, "cwd": cwd, "session": sid})
         if not tabs:
             continue
         wname = ws.get("customTitle") or ws.get("title")
