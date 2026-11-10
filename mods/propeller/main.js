@@ -97,13 +97,18 @@ export default class Propeller extends View {
     await fs.unlink(importPath());
   }
 
-  // The focused terminal waits for its Claude: start it there, a fork of the cmux one.
+  // You opened a space whose terminals wait for their Claude: start each, a fork of the cmux one.
+  // The whole space at once, not only the tab you look at, so its other tabs are ready too.
   wake() {
-    const p = panes().find((p) => p.focused && p.terminal && this.state.pending[p.terminal]);
-    if (!p) return;
-    const session = this.state.pending[p.terminal];
-    delete this.state.pending[p.terminal];
-    hc(["send", p.terminal, `${CLEAN_ENV} claude --resume ${session} --fork-session`]).catch(() => null);
+    const space = spaces().find((s) => s.active);
+    if (!space) return;
+    const tabs = new Set(space.tabs.map((t) => t.id));
+    for (const p of panes()) {
+      if (!p.terminal || !tabs.has(p.tab) || !this.state.pending[p.terminal]) continue;
+      const session = this.state.pending[p.terminal];
+      delete this.state.pending[p.terminal];
+      hc(["send", p.terminal, `${CLEAN_ENV} claude --resume ${session} --fork-session`]).catch(() => null);
+    }
   }
 
   // --- 1. Claude after a reboot -------------------------------------------------
