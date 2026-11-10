@@ -63,9 +63,9 @@ rep('''.child(svg(menuIcon(it[1]))''', '''.child(svg(menuIcon(it[1], it[2]))''')
 rep('''    else run(it[1], it[2]);''', '''    else if (it[1].startsWith("propeller.")) propellerRun(it[1], it[2]);
     else run(it[1], it[2]);''')
 rep('''    case "tab":''', '''    case "propeller":
-      return [["Звільнити RAM (закрити неактивних Claude)", "propeller.free", {}]];
+      return [["Звільнити RAM", "propeller.free", {}]];
     case "tab":''')
-rep('''  if (command === "propeller.sleep")''', '''  if (command === "propeller.free") return "mods/propeller-art/moon.svg";
-  if (command === "propeller.sleep")''')
+rep('''  if (command === "propeller.sleep") return''', '''  if (command === "propeller.free") return "mods/propeller-art/moon.svg";
+  if (command === "propeller.sleep") return''')
 (dst / "main.js").write_text(s)
 shutil.copy(src / "mod.json", dst / "mod.json")
