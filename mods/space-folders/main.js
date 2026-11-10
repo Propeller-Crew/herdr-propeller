@@ -818,7 +818,7 @@ export default class Spaces extends View {
       .when(w.active, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
       .on_click(() => run("space.select", { id: w.id }))
-      .child(div().text_color(w.active ? t.foreground : t.muted).child(String(i + 1)))
+      .child(badge(w, (() => { const c = (shared("space.colors") ?? {})[w.id] ?? "ansi6"; return c.startsWith("#") ? c : (MARK[c] ?? t[c]); })()))
       .child(div().text_color(tone(t, w.status)).child(glyph(w.status)));
   }
 

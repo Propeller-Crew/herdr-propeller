@@ -30,6 +30,9 @@ rep('''          .on_click((_e, cx) => { cx.stop_propagation(); this.newFolder(m
         .when(connected && !m, el => el.child(div().id("space-icons-ask").flex_none().px(3).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click((_e, cx) => { cx.stop_propagation(); if (!shared("space.icons.busy")) setShared("space.icons.ask", Date.now()); })
           .child(shared("space.icons.busy") ? svg("mods/workspace-chrome/spinner.svg").size(12).spin(900) : svg("mods/space-folders/sparkles.svg").size(12))))''')
+# The folded rail shows the same badge instead of the space's number.
+rep('''      .child(div().text_color(w.active ? t.foreground : t.muted).child(String(i + 1)))''',
+    '''      .child(badge(w, (() => { const c = (shared("space.colors") ?? {})[w.id] ?? "ansi6"; return c.startsWith("#") ? c : (MARK[c] ?? t[c]); })()))''')
 p.write_text(s)
 (pathlib.Path(sys.argv[1]) / "sparkles.svg").write_text(
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
