@@ -20,6 +20,8 @@ workspace app. Built as Herdr mods and config, not a fork, so Herdr's updates ke
   Right-click it to free RAM (quit idle Claudes outside the open space).
 - **Context menu.** Herdr's own, plus: move to the other profile, sleep or wake, another Claude
   in this space, a Claude on its own branch (`claude -w`).
+- **Claude Code skill `herdr-tabs`.** Ask Claude to open a tab or space for a task, and it
+  starts another Claude there with a brief, then watches it (`hc wait`) and brings back the result.
 - **Glass layout** in light and dark, following the system.
 
 The interface is in Ukrainian.

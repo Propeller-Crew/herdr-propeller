@@ -16,6 +16,8 @@ for pin in jankeesvw/herdr-space-folders@63a78b20d5ed30d57166a3c7165a6eb558c3ef8
   git -C "$d" fetch -q origin && git -C "$d" checkout -q "$c"
 done
 "$HERE/sync-mods.sh"
+# Claude Code skill: tasks into new Herdr tabs and spaces.
+mkdir -p ~/.claude/skills && ln -sfn "$HERE/skills/herdr-tabs" ~/.claude/skills/herdr-tabs
 # Our keys (alt-up/down through the agents list) merged into the person's own keys.json.
 python3 - "$HERE/keys.json" "$APP/keys.json" <<'PY'
 import json, os, sys
