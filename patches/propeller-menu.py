@@ -75,5 +75,7 @@ rep('''  if (command === "propeller.sleep") return''', '''  if (command === "pro
   if (command === "propeller.sleep") return''')
 # cmd-t opens a plain tab, not our Claude ones: no shortcut hint on them.
 rep('''child(shortcut(it[1], it[2]))''', '''child(it[2]?.argv ? "" : shortcut(it[1], it[2]))''')
+# A new space starts with Claude, like cmd-n and the sidebar's +.
+rep('''["New space", "space.new", {}],''', '''["New space", "propeller-agents.new", {}],''')
 (dst / "main.js").write_text(s)
 shutil.copy(src / "mod.json", dst / "mod.json")
