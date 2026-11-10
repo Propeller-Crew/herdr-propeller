@@ -27,22 +27,6 @@
           "type": "column",
           "children": [
             {
-              "id": "spaces",
-              "type": "block",
-              "content": {
-                "mod": "space-folders"
-              },
-              "size": {
-                "weight": 1
-              },
-              "min": 90,
-              "radius": 14,
-              "border": {
-                "width": 1,
-                "color": "border"
-              }
-            },
-            {
               "id": "agents",
               "type": "block",
               "content": {

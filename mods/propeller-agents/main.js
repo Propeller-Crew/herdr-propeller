@@ -12,7 +12,7 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, panes, run, theme, shared, setShared, layout, window } from "herdr";
+import { spaces, panes, run, theme, shared, setShared, layout, home, openOverlay, nextCommand } from "herdr";
 
 const DAY = 24 * 3600 * 1000;
 const ART = "mods/propeller-art";
@@ -25,6 +25,14 @@ const SECTIONS = [
   { id: "inactive", name: "Сплять", color: "#8E8E93", icon: "moon" },
 ];
 const SLEEP = "propeller-sleep";
+// Profiles, like Dia's spaces: one sidebar shows one of them. A space belongs to the one its
+// folder says (ObsidianVault: personal, everything else: work) unless moved by hand
+// (shared "propeller.profile": {spaceId: "work" | "personal"}).
+const PROFILES = [
+  { id: "work", name: "Робоче", icon: "briefcase", color: "#22a99a", folder: "Documents/Propeller_OS" },
+  { id: "personal", name: "Особисте", icon: "house", color: "#8b7cf6", folder: "Documents/ObsidianVault" },
+];
+const profileOf = (s) => (shared("propeller.profile") ?? {})[s.id] ?? (/\/ObsidianVault(\/|$)/.test(s.folder ?? "") ? "personal" : "work");
 const SLEEPING_PREVIEW = 12;
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 const DOTS = ["●∙∙", "∙●∙", "∙∙●"];
@@ -76,6 +84,18 @@ export default class PropellerAgents extends View {
     try { saved = JSON.parse(localStorage.getItem("folded") ?? "{}"); } catch {}
     this.folded = { inactive: true, ...saved };
     this.allSleeping = false;
+    this.profile = localStorage.getItem("profile") ?? "work";
+    this.lastActive = null;
+    this.menuFor = null; // space id whose actions show under its row (right-click)
+    this.order = []; // space ids as shown, for alt-up/down
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const c = String(await nextCommand()).split(".").pop();
+        if (c === "next" || c === "prev") this.step(c === "next" ? 1 : -1);
+        if (c === "work" || c === "personal") this.setProfile(c);
+        cx.notify();
+      }
+    });
     // Times ("21m") move on: once every 30 s is enough. The dots animate natively.
     cx.timer.every(30000, (cx) => cx.notify());
   }
@@ -91,6 +111,30 @@ export default class PropellerAgents extends View {
     if (pick("unread").length) return { kind: "unread", since: latest(pick("unread")) };
     if (!last || Date.now() - last > DAY) return { kind: "inactive", since: last };
     return { kind: "done", since: last };
+  }
+
+  setProfile(id) {
+    this.profile = id;
+    this.menuFor = null;
+    localStorage.setItem("profile", id);
+  }
+
+  // One row down or up from the space in front, round the ends (alt-down / alt-up).
+  step(dir) {
+    const ids = this.order, len = ids.length;
+    if (!len) return;
+    const at = ids.indexOf(spaces().find((s) => s.active)?.id);
+    run("space.select", { id: ids[at < 0 ? 0 : (at + dir + len) % len] });
+  }
+
+  // Into "Сплять" or out of it: the propeller mod sees the move and puts the space to sleep or wakes it.
+  setAsleep(s, on) {
+    const all = shared("space-folders") ?? {};
+    const k = s.machine ?? "";
+    const cur = all[k] ?? { list: [], of: {} };
+    const of = { ...cur.of };
+    if (on) of[localId(s)] = SLEEP; else delete of[localId(s)];
+    setShared("space-folders", { ...all, [k]: { ...cur, of, at: Date.now() } });
   }
 
   toggle(id, cx) {
@@ -130,13 +174,50 @@ export default class PropellerAgents extends View {
       .when(on, (el) => el.bg(t.selected))
       .when(!on, (el) => el.hover((x) => x.bg(t.hover)))
       .when(st.kind === "unread" && !on, (el) => el.bg("#4C9EEB24"))
-      .on_click(() => run("space.select", { id: s.id }))
+      .on_click(() => { this.menuFor = null; run("space.select", { id: s.id }); })
+      .on_mouse_down("right", (_e, cx) => { this.menuFor = this.menuFor === s.id ? null : s.id; cx.notify(); })
       .child(badge(s, t))
       .child(div().flex_1().min_w(0).truncate().text_size(13)
         .when(st.kind === "unread", (el) => el.font_semibold())
         .text_color(asleep && !on ? t.muted : t.foreground).child(spaceName(s)))
       .child(div().flex_none().text_size(11.5).text_color(st.kind === "needs" ? "#F5A524" : st.kind === "unread" ? "#4C9EEB" : t.dim).child(label))
       .child(this.mark(st.kind, t));
+  }
+
+  // Right-click on a space: its actions in a strip under the row.
+  actions(s, st, t) {
+    const other = PROFILES.find((p) => p.id !== profileOf(s));
+    const btn = (id, label, act) => div().id(id).flex_none().px(8).py(2).rounded(6).border(1).border_color(t.border)
+      .text_size(11).text_color(t.muted).hover((x) => x.bg(t.hover).text_color(t.foreground))
+      .on_click((_e, cx) => { act(); this.menuFor = null; cx.notify(); }).child(label);
+    return h_flex().id(`a-${s.id}`).flex_none().flex_wrap().gap(4).pl(34).pr(8).py(4)
+      .child(btn("a-profile", `→ ${other.name}`, () => setShared("propeller.profile", { ...(shared("propeller.profile") ?? {}), [s.id]: other.id })))
+      .child(btn("a-sleep", st.kind === "inactive" ? "Розбудити" : "Приспати", () => this.setAsleep(s, st.kind !== "inactive")))
+      .child(btn("a-more", "Ще…", () => openOverlay({ mod: "menu", kind: "popup", width: 200, height: 260, props: { tab: "space", target: { id: s.id } } })));
+  }
+
+  // Top of the panel: the profile switcher, a new space in this profile's folder, ✨ icons.
+  top(groups, t) {
+    const urgent = (pid) => ["needs", "unread"].some((k) => groups[k].some(({ s }) => profileOf(s) === pid));
+    const tab = (p) => {
+      const on = p.id === this.profile;
+      return h_flex().id(`p-${p.id}`).flex_1().h(26).gap(6).items_center().justify_center().rounded(7)
+        .when(on, (el) => el.bg(p.color + "2e"))
+        .when(!on, (el) => el.hover((x) => x.bg(t.hover)))
+        .on_click((_e, cx) => { this.setProfile(p.id); cx.notify(); })
+        .child(svg(`${ART}/${p.icon}.svg`).size(13).text_color(on ? p.color : t.dim))
+        .child(div().text_size(12).font_semibold().text_color(on ? t.foreground : t.muted).child(p.name))
+        .when(!on && urgent(p.id), (el) => el.child(div().size(6).rounded(3).bg("#F5A524")));
+    };
+    const icon = (id, art, act, extra) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(7)
+      .text_color(t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground)).on_click(act).child(extra ?? svg(`${ART}/${art}.svg`).size(14));
+    const prof = PROFILES.find((p) => p.id === this.profile);
+    const busy = shared("space.icons.busy");
+    return h_flex().flex_none().gap(4).px(2).pb(6).items_center()
+      .child(h_flex().flex_1().p(2).gap(2).rounded(9).bg(t.surface ?? t.hover).children(PROFILES.map(tab)))
+      .child(icon("new-space", "plus", () => run("space.new", { name: "", folder: `${home()}/${prof.folder}`, machine: "" })))
+      .child(icon("icons", "sparkles", () => { if (!busy) setShared("space.icons.ask", Date.now()); },
+        busy ? svg("mods/workspace-chrome/spinner.svg").size(13).spin(900) : null));
   }
 
   tabRow(s, tab, all, t) {
@@ -156,7 +237,12 @@ export default class PropellerAgents extends View {
 
   // The folded rail: badges only, the urgent ones first, each with its state under it.
   rail(groups, t) {
-    const rows = [];
+    const rows = PROFILES.map((p) => div().id(`rp-${p.id}`).size(30).flex_none().flex().items_center().justify_center().rounded(7)
+      .when(p.id === this.profile, (el) => el.bg(p.color + "2e"))
+      .hover((x) => x.bg(t.hover))
+      .on_click((_e, cx) => { this.setProfile(p.id); cx.notify(); })
+      .child(svg(`${ART}/${p.icon}.svg`).size(14).text_color(p.id === this.profile ? p.color : t.dim)));
+    rows.push(div().h(1).w(30).flex_none().my(4).bg(t.border));
     for (const sec of SECTIONS) {
       if (sec.id === "inactive") continue;
       for (const { s, st } of groups[sec.id]) {
@@ -178,15 +264,25 @@ export default class PropellerAgents extends View {
     const of = (shared("space-folders") ?? {})[""]?.of ?? {};
     const asleep = new Set(Object.entries(of).filter(([, f]) => f === SLEEP).map(([id]) => id));
     const groups = Object.fromEntries(SECTIONS.map((x) => [x.id, []]));
+    // Opening a space of the other profile (a key, a notification) switches the sidebar to it.
+    const active = spaces().find((s) => s.active);
+    if (active && active.id !== this.lastActive) {
+      this.lastActive = active.id;
+      if (profileOf(active) !== this.profile) this.setProfile(profileOf(active));
+    }
+    const everywhere = Object.fromEntries(SECTIONS.map((x) => [x.id, []]));
     for (const s of spaces()) {
       const st = this.state(s, seen, asleep);
+      everywhere[st.kind].push({ s, st });
+      if (profileOf(s) !== this.profile) continue;
       groups[st.kind].push({ s, st });
     }
     for (const g of Object.values(groups)) g.sort((a, b) => (b.st.since ?? 0) - (a.st.since ?? 0));
     if (narrow()) return this.rail(groups, t);
 
     const all = panes();
-    const body = [];
+    const body = [this.top(everywhere, t)];
+    const order = [];
     for (const sec of SECTIONS) {
       const rows = groups[sec.id];
       if (!rows.length) continue;
@@ -195,6 +291,8 @@ export default class PropellerAgents extends View {
       const capped = sec.id === "inactive" && !this.allSleeping && rows.length > SLEEPING_PREVIEW;
       for (const { s, st } of capped ? rows.slice(0, SLEEPING_PREVIEW) : rows) {
         body.push(this.spaceRow(s, st, t));
+        order.push(s.id);
+        if (this.menuFor === s.id) body.push(this.actions(s, st, t));
         if (sec.id !== "inactive" && s.tabs.length > 1) for (const tab of s.tabs) body.push(this.tabRow(s, tab, all, t));
       }
       if (capped) body.push(div().id("more").h(24).flex_none().px(10).flex().items_center().text_size(12).text_color(t.dim)
@@ -203,7 +301,8 @@ export default class PropellerAgents extends View {
         .child(`ще ${rows.length - SLEEPING_PREVIEW}`));
       body.push(div().h(6).flex_none());
     }
+    this.order = order;
     return v_flex().id("propeller-agents").size_full().rounded(13).overflow_hidden().bg(t.chrome).px(6).py(8).gap(1).overflow_y_scroll()
-      .children(body.length ? body : [div().px(10).py(6).text_size(12).text_color(t.dim).child("Ще нічого не відбувається")]);
+      .children(body.length > 1 ? body : [...body, div().px(10).py(6).text_size(12).text_color(t.dim).child("Тут поки порожньо")]);
   }
 }
