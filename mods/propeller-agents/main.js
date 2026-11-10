@@ -86,7 +86,6 @@ export default class PropellerAgents extends View {
     this.allSleeping = false;
     this.profile = localStorage.getItem("profile") ?? "work";
     this.lastActive = null;
-    this.menuFor = null; // space id whose actions show under its row (right-click)
     this.order = []; // space ids as shown, for alt-up/down
     cx.spawn(async (cx) => {
       for (;;) {
@@ -115,7 +114,6 @@ export default class PropellerAgents extends View {
 
   setProfile(id) {
     this.profile = id;
-    this.menuFor = null;
     localStorage.setItem("profile", id);
   }
 
@@ -125,16 +123,6 @@ export default class PropellerAgents extends View {
     if (!len) return;
     const at = ids.indexOf(spaces().find((s) => s.active)?.id);
     run("space.select", { id: ids[at < 0 ? 0 : (at + dir + len) % len] });
-  }
-
-  // Into "Сплять" or out of it: the propeller mod sees the move and puts the space to sleep or wakes it.
-  setAsleep(s, on) {
-    const all = shared("space-folders") ?? {};
-    const k = s.machine ?? "";
-    const cur = all[k] ?? { list: [], of: {} };
-    const of = { ...cur.of };
-    if (on) of[localId(s)] = SLEEP; else delete of[localId(s)];
-    setShared("space-folders", { ...all, [k]: { ...cur, of, at: Date.now() } });
   }
 
   toggle(id, cx) {
@@ -174,26 +162,15 @@ export default class PropellerAgents extends View {
       .when(on, (el) => el.bg(t.selected))
       .when(!on, (el) => el.hover((x) => x.bg(t.hover)))
       .when(st.kind === "unread" && !on, (el) => el.bg("#4C9EEB24"))
-      .on_click(() => { this.menuFor = null; run("space.select", { id: s.id }); })
-      .on_mouse_down("right", (_e, cx) => { this.menuFor = this.menuFor === s.id ? null : s.id; cx.notify(); })
+      .on_click(() => run("space.select", { id: s.id }))
+      // Herdr's space menu with our items (patches/propeller-menu.py): move to the other profile, sleep.
+      .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 300, props: { tab: "space", target: { id: s.id } } }))
       .child(badge(s, t))
       .child(div().flex_1().min_w(0).truncate().text_size(13)
         .when(st.kind === "unread", (el) => el.font_semibold())
         .text_color(asleep && !on ? t.muted : t.foreground).child(spaceName(s)))
       .child(div().flex_none().text_size(11.5).text_color(st.kind === "needs" ? "#F5A524" : st.kind === "unread" ? "#4C9EEB" : t.dim).child(label))
       .child(this.mark(st.kind, t));
-  }
-
-  // Right-click on a space: its actions in a strip under the row.
-  actions(s, st, t) {
-    const other = PROFILES.find((p) => p.id !== profileOf(s));
-    const btn = (id, label, act) => div().id(id).flex_none().px(8).py(2).rounded(6).border(1).border_color(t.border)
-      .text_size(11).text_color(t.muted).hover((x) => x.bg(t.hover).text_color(t.foreground))
-      .on_click((_e, cx) => { act(); this.menuFor = null; cx.notify(); }).child(label);
-    return h_flex().id(`a-${s.id}`).flex_none().flex_wrap().gap(4).pl(34).pr(8).py(4)
-      .child(btn("a-profile", `→ ${other.name}`, () => setShared("propeller.profile", { ...(shared("propeller.profile") ?? {}), [s.id]: other.id })))
-      .child(btn("a-sleep", st.kind === "inactive" ? "Розбудити" : "Приспати", () => this.setAsleep(s, st.kind !== "inactive")))
-      .child(btn("a-more", "Ще…", () => openOverlay({ mod: "menu", kind: "popup", width: 200, height: 260, props: { tab: "space", target: { id: s.id } } })));
   }
 
   // Top of the panel: the profile switcher, a new space in this profile's folder, ✨ icons.
@@ -292,7 +269,6 @@ export default class PropellerAgents extends View {
       for (const { s, st } of capped ? rows.slice(0, SLEEPING_PREVIEW) : rows) {
         body.push(this.spaceRow(s, st, t));
         order.push(s.id);
-        if (this.menuFor === s.id) body.push(this.actions(s, st, t));
         if (sec.id !== "inactive" && s.tabs.length > 1) for (const tab of s.tabs) body.push(this.tabRow(s, tab, all, t));
       }
       if (capped) body.push(div().id("more").h(24).flex_none().px(10).flex().items_center().text_size(12).text_color(t.dim)

@@ -41,4 +41,6 @@ cp "$HERE/layout-propeller-glass.json" "$APP/layouts/propeller-glass.json"
 rm -rf "$APP/octopus"; mkdir -p "$APP/mods/propeller-art" && rsync -a --delete --exclude "*.svg" "$HERE/octopus/" "$APP/mods/propeller-art/"
 # Lucide icons (ISC) for the agents list: section pills, state marks.
 rsync -a "$HERE/art/" "$APP/mods/propeller-art/"
+# Herdr's context menu plus our space items (profile, sleep), rebuilt from the shipped one.
+python3 "$HERE/patches/propeller-menu.py" "$APP/mods/menu" "$APP/mods/propeller-menu" || exit 1
 echo ok
