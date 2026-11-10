@@ -89,7 +89,22 @@ export default class Propeller extends View {
     cx.timer.every(30000, (cx) => cx.spawn(async (cx) => { await this.readLimits(); cx.notify(); }));
   }
 
+  // ~/.config/herdr-propeller.json (yours, not in the repo): the profiles' folders and hints for
+  // the icon picker. Shared as "propeller.config" with ~ expanded, for the sidebar and the menu.
+  async readConfig() {
+    let c = {};
+    try { c = JSON.parse(await fs.readFile(`${home()}/.config/herdr-propeller.json`, "utf8")); } catch {}
+    const full = (f) => (typeof f === "string" ? f.replace(/^~(?=\/|$)/, home()).replace(/\/+$/, "") : null);
+    this.config = c;
+    const shown = {
+      workFolder: full(c.workFolder) ?? home(),
+      personalFolders: (c.personalFolders ?? []).map(full).filter(Boolean),
+    };
+    if (JSON.stringify(shown) !== JSON.stringify(shared("propeller.config"))) setShared("propeller.config", shown);
+  }
+
   async readLimits() {
+    await this.readConfig();
     try {
       this.limits = JSON.parse(await fs.readFile(`${home()}/.claude/rate-limits.json`, "utf8"));
     } catch { this.limits = null; }
@@ -156,7 +171,7 @@ export default class Propeller extends View {
     const prompt = `Pick an icon for each workspace below (a list of a person's work sessions in a terminal app).
 
 For each one, decide what it is about from its name, folder and tab names, then give it the most fitting icon, in this order:
-1. An app or product whose code is in its folder: its real app icon or logo from its code (an AppIcon.appiconset PNG, icon.png, favicon, logo; the largest). Make a 64 px PNG:
+1. An app or product whose code is in its folder${this.config?.ownProducts ? ` or one of these: ${this.config.ownProducts}` : ""}: its real app icon or logo from its code (an AppIcon.appiconset PNG, icon.png, favicon, logo; the largest). Make a 64 px PNG:
      sips -s format png -Z 64 "<source>" --out "${dir}/<id>.png"
    and answer {"image": "space-icons/<id>.png"}. Look quickly; don't search the whole disk.
 2. About a brand, product or service (Amazon, Home Assistant, Instagram, GitLab, Lightroom, Kindle, Obsidian, Raspberry Pi…): its logo from Simple Icons:

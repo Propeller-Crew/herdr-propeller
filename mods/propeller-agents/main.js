@@ -26,13 +26,18 @@ const SECTIONS = [
 ];
 const SLEEP = "propeller-sleep";
 // Profiles, like Dia's spaces: one sidebar shows one of them. A space belongs to the one its
-// folder says (ObsidianVault: personal, everything else: work) unless moved by hand
+// folder says (under one of the config's personalFolders: personal, everything else: work)
+// unless moved by hand
 // (shared "propeller.profile": {spaceId: "work" | "personal"}).
 const PROFILES = [
-  { id: "work", name: "Робоче", icon: "briefcase", color: "#22a99a", folder: "Documents/Propeller_OS" },
-  { id: "personal", name: "Особисте", icon: "house", color: "#8b7cf6", folder: "Documents/ObsidianVault" },
+  { id: "work", name: "Робоче", icon: "briefcase", color: "#22a99a" },
+  { id: "personal", name: "Особисте", icon: "house", color: "#8b7cf6" },
 ];
-const profileOf = (s) => (shared("propeller.profile") ?? {})[s.id] ?? (/\/ObsidianVault(\/|$)/.test(s.folder ?? "") ? "personal" : "work");
+// The folders come from ~/.config/herdr-propeller.json, via the propeller mod.
+const config = () => shared("propeller.config") ?? {};
+const under = (f, dir) => f === dir || (f ?? "").startsWith(dir + "/");
+const profileOf = (s) => (shared("propeller.profile") ?? {})[s.id] ?? ((config().personalFolders ?? []).some((d) => under(s.folder, d)) ? "personal" : "work");
+const folderOf = (pid) => (pid === "personal" ? config().personalFolders?.[0] : config().workFolder) ?? home();
 const SLEEPING_PREVIEW = 12;
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 const DOTS = ["●∙∙", "∙●∙", "∙∙●"];
@@ -259,7 +264,7 @@ export default class PropellerAgents extends View {
     const busy = shared("space.icons.busy");
     return h_flex().flex_none().gap(4).px(2).pb(6).items_center()
       .child(h_flex().flex_1().p(2).gap(2).rounded(9).bg(t.surface ?? t.hover).children(PROFILES.map(tab)))
-      .child(icon("new-space", "plus", () => run("space.new", { name: "", folder: `${home()}/${prof.folder}`, machine: "" })))
+      .child(icon("new-space", "plus", () => run("space.new", { name: "", folder: folderOf(prof.id), machine: "" })))
       .child(icon("icons", "sparkles", () => { if (!busy) setShared("space.icons.ask", Date.now()); },
         busy ? svg("mods/workspace-chrome/spinner.svg").size(13).spin(900) : null));
   }

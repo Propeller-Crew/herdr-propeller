@@ -1,4 +1,4 @@
-# herdr config for Artem (symlinked from ~/.config/herdr/config.toml)
+# Config for the terminal version of herdr (TUI); link it as ~/.config/herdr/config.toml
 [ui]
 # Agents that need you first, then working, then done.
 agent_panel_sort = "priority"

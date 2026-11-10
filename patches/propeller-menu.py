@@ -23,7 +23,8 @@ rep('import { run, props, closeOverlay, openOverlay, theme, keys, terminals, spa
 // --- Propeller: profiles and sleep (same rules as mods/propeller-agents) ---
 const SLEEP = "propeller-sleep";
 const localId = (s) => (s.machine ? s.id.slice(s.machine.length + 1) : s.id);
-const profileOf = (s) => (shared("propeller.profile") ?? {})[s.id] ?? (/\\/ObsidianVault(\\/|$)/.test(s.folder ?? "") ? "personal" : "work");
+const under = (f, dir) => f === dir || (f ?? "").startsWith(dir + "/");
+const profileOf = (s) => (shared("propeller.profile") ?? {})[s.id] ?? ((shared("propeller.config")?.personalFolders ?? []).some((d) => under(s.folder, d)) ? "personal" : "work");
 const asleep = (s) => (shared("space-folders") ?? {})[s.machine ?? ""]?.of?.[localId(s)] === SLEEP;
 function propellerItems(id) {
   const s = spaces().find((x) => x.id === id);
