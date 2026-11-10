@@ -18,6 +18,10 @@ python3 "$HERE/patches/space-folders.py" "$HERE/mods/space-folders" || exit 1
 rm -rf "$HERE/mods/islands-tabs"
 cp -R "$EXT/herdr-mods/islands/mods/islands-tabs" "$HERE/mods/islands-tabs"
 python3 "$HERE/patches/islands-tabs.py" "$HERE/mods/islands-tabs/main.js"
+# islands-pane and the status bar: the space's name in the pane header, its folder in the status bar.
+for m in islands-pane islands-workspace-status; do rm -rf "$HERE/mods/$m"; cp -R "$EXT/herdr-mods/islands/mods/$m" "$HERE/mods/$m"; done
+python3 "$HERE/patches/islands-pane.py" "$HERE/mods/islands-pane/main.js" || exit 1
+python3 "$HERE/patches/islands-status.py" "$HERE/mods/islands-workspace-status/main.js" || exit 1
 
 link() { ln -sfn "$1" "$APP/mods/$(basename "$1")"; }
 # Herdr doesn't load a mod's icons (svg/png) through a symlinked folder, so mods with icons are copied.
@@ -29,8 +33,10 @@ link "$HERE/mods/propeller-agents"
 cp "$HERE/mods/propeller/palette.js" "$HERE/mods/propeller-colors/palette.js"
 link "$HERE/mods/propeller-colors"
 copy "$HERE/mods/space-folders"
-for m in "$EXT"/herdr-mods/islands/mods/islands-*; do [ "$(basename "$m")" = islands-tabs ] || copy "$m"; done
+for m in "$EXT"/herdr-mods/islands/mods/islands-*; do case "$(basename "$m")" in islands-tabs|islands-pane|islands-workspace-status) ;; *) copy "$m";; esac; done
 copy "$HERE/mods/islands-tabs"
+copy "$HERE/mods/islands-pane"
+copy "$HERE/mods/islands-workspace-status"
 # herdr-sim as a pane only (its tab-bar clone is left out).
 copy "$EXT/herdr-sim/mods/herdr-sim"
 copy "$EXT/herdr-sim/mods/herdr-sim-screen"

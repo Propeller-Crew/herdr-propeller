@@ -7,3 +7,5 @@ mods/islands-tabs/
 layout-propeller-glass.json
 .DS_Store
 mods/propeller-colors/palette.js
+mods/islands-pane/
+mods/islands-workspace-status/
