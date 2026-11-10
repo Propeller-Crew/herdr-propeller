@@ -1,6 +1,6 @@
 ---
 name: herdr-tabs
-description: Inside the Herdr app (`herdr-app status` answers), open a new tab or space with its own Claude for a separate task instead of doing it in this conversation. Use when the user asks to open a tab or space for something ("відкрий таб для…", "open a tab where we'll work on…"), or asks for something that clearly drifts from this tab's topic and would make a session of its own (another project, a separate feature or bug, a long job); then watch it and come back with its result. Not for small, quick things or for continuing the current topic.
+description: Inside the Herdr app (`herdr-app status` answers), open a worker tab with its own Claude, in this same space by default, for a separate task instead of doing it in this conversation. Use when the user asks to open a tab or space for something ("відкрий таб для…", "open a tab where we'll work on…"), or asks for something that clearly drifts from this tab's topic and would make a session of its own (another project, a separate feature or bug, a long job); then watch it and come back with its result. Not for small, quick things or for continuing the current topic.
 ---
 
 # A separate task → a new Herdr tab or space
@@ -10,16 +10,23 @@ fails, Herdr isn't running here: work as usual. Never start Herdr or the `hc` se
 (`open`, `hc server start`, `hc machine add`): a core started from a Claude session inherits its
 environment, and Claude in Herdr stops saving conversations.
 
-## Where
+## Where: a worker tab in this space
 
-- **A new space** when it's another project or a big job of its own (a launch, a product): it gets
-  its own row in the sidebar. `herdr-app do space.new '{"name": "...", "folder": "...", "argv": [...]}'`
-- **A new tab in this space** for a side task of the same project:
-  `herdr-app do tab.new '{"space": "<id>", "name": "...", "folder": "...", "argv": [...]}'`
-  (`<id>`: `"space"` from `herdr-app status`).
+A space is a project: this tab is its orchestrator, the other tabs are its workers. So by
+default the new task is **a new tab in the space this Claude runs in**, even when the space has
+another name, and even for a big job:
 
-Both print JSON with `terminal` (e.g. `t42`); keep it. The folder is the project's (look it up in
-the vault's MAP.md → «Код», or `~/code/<name>`).
+    S=$(python3 ~/.claude/skills/herdr-tabs/here.py | python3 -c 'import json,sys; print(json.load(sys.stdin)["space"])')
+    herdr-app do tab.new "{\"space\": \"$S\", \"name\": \"...\", \"folder\": \"...\", \"argv\": [...]}"
+
+(`here.py` finds this Claude's own terminal; not `herdr-app status`, which is whatever space
+is in front.) If the user names another space («у воркспейсі АпМап»), find it in
+`herdr-app ls` by name and open the tab there. Only when they ask for a new space (a new
+project of its own: «новий воркспейс», «окремий простір») use
+`herdr-app do space.new '{"name": "...", "folder": "...", "argv": [...]}'`.
+
+Both print JSON with `terminal` (e.g. `t42`); keep it. Name the tab after the task, short. The
+folder is the project's (the vault's MAP.md → «Код», or `~/code/<name>`).
 
 ## How
 
@@ -33,7 +40,7 @@ the vault's MAP.md → «Код», or `~/code/<name>`).
    `["/bin/zsh", "-ic", "claude \"$(cat <brief>)\"; exec zsh -i"]`
    In a git repo use `claude -w <name>` (its own worktree, so two sessions don't edit the same files).
    Plain `claude`, never by an absolute path.
-3. **Tell the user in one line** what you opened (space or tab, its name) and what it does.
+3. **Tell the user in one line** which tab you opened, in which space and what it does.
    It opens in the background; don't switch them to it unless they asked to go there.
 
 ## Watch it
