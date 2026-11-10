@@ -34,6 +34,7 @@ function propellerItems(id) {
     asleep(s) ? ["Розбудити", "propeller.sleep", { id, on: false }] : ["Приспати", "propeller.sleep", { id, on: true }],
   ];
 }
+const placeOf = (id) => { const s = spaces().find((x) => x.id === id); return s ? place(s) : undefined; };
 function propellerRun(command, args) {
   const s = spaces().find((x) => x.id === args.id);
   if (!s) return;
@@ -49,10 +50,14 @@ function propellerRun(command, args) {
 rep('''        ["Rename", "space.rename", { id: tg.id }],
         ...(git''', '''        ["Rename", "space.rename", { id: tg.id }],
         ...propellerItems(tg.id),
+        // A second Claude in this space, in a new tab; or one on its own branch (claude -w), in a repo.
+        ["Ще один Claude", "tab.new", { space: tg.id, folder: placeOf(tg.id), argv: ["claude"] }],
+        ...(git ? [["Claude в окремій гілці", "tab.new", { space: tg.id, folder: placeOf(tg.id), argv: ["claude", "-w"] }]] : []),
         ...(git''')
 rep('''function menuIcon(command) {''', '''function menuIcon(command, args) {
   if (command === "propeller.profile") return `mods/propeller-art/${args.to === "work" ? "briefcase" : "house"}.svg`;
-  if (command === "propeller.sleep") return `mods/propeller-art/${args.on ? "moon" : "sun"}.svg`;''')
+  if (command === "propeller.sleep") return `mods/propeller-art/${args.on ? "moon" : "sun"}.svg`;
+  if (command === "tab.new" && args?.argv?.[0] === "claude") return args.argv[1] === "-w" ? "mods/workspace-chrome/git-branch.svg" : "icons/claude.svg";''')
 rep('''.child(svg(menuIcon(it[1]))''', '''.child(svg(menuIcon(it[1], it[2]))''')
 rep('''    else run(it[1], it[2]);''', '''    else if (it[1].startsWith("propeller.")) propellerRun(it[1], it[2]);
     else run(it[1], it[2]);''')
