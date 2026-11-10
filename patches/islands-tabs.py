@@ -39,4 +39,16 @@ swap('''    const item = (c, i) => {''',
     const toggleSim = () => simPane ? run("pane.close", { pane: simPane.pane }) : run("pane.split", { direction: "right", mod: "herdr-sim" });
     const item = (c, i) => {''')
 
+# 4. Calmer tabs: the active one a solid card in the terminal's own color with normal text (not
+#    yellow), the rest without a frame, just text; an agent's icon only when it isn't Claude
+#    everywhere (the state dot or spinner already says it's an agent).
+swap('''        .border(1).border_color(t.border).bg(islandFill(t.surface)).text_color(c.active ? t.ansi3 : t.muted) // every tab is a pill, the active one in the theme's yellow (ansi3), like the branch pill
+        .hover(s => s.bg(t.hover))''',
+     '''        .border(1).border_color(c.active ? t.border : "#00000000").bg(c.active ? t.background : "#00000000")
+        .text_color(c.active ? t.foreground : t.muted).when(c.active, el => el.font_medium())
+        .hover(s => s.bg(c.active ? t.background : t.hover).text_color(t.foreground))''')
+swap('''        .when(Boolean(program?.icon), el =>''', '''        .when(Boolean(program?.icon) && !program?.agent, el =>''')
+swap('''program.tint ? svg(program.icon).size(14).text_color(c.active ? t.ansi3 : t.muted)''', '''program.tint ? svg(program.icon).size(14).text_color(c.active ? t.foreground : t.muted)''')
+swap('''.child(div().max_w(170).truncate()''', '''.child(div().max_w(200).truncate()''')
+
 open(path, "w").write(s)
