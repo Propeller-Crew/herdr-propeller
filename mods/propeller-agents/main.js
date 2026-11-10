@@ -347,6 +347,21 @@ export default class PropellerAgents extends View {
     this.order = order;
     return v_flex().id("propeller-agents").size_full().rounded(13).overflow_hidden().bg(t.chrome).px(6).py(8).gap(1).overflow_y_scroll()
       .on_mouse_down("left", () => { if (!this.dragging) this.moved = false; })
+      // A two-finger sideways swipe switches profile, as in Dia: once per swipe, and only when
+      // it is clearly sideways, so scrolling the list never flips it.
+      .on_scroll_wheel((e, cx) => {
+        // A pause also starts a new swipe: a mouse wheel reports no phases.
+        if (e.touch_phase === "started" || !this.swipe || Date.now() - this.swipe.at > 400) this.swipe = { x: 0, y: 0, done: false };
+        this.swipe.at = Date.now();
+        if (e.touch_phase === "ended" || e.touch_phase === "cancelled") { this.swipe = null; return; }
+        const sw = this.swipe;
+        sw.x += e.delta.x; sw.y += e.delta.y;
+        if (sw.done || Math.abs(sw.x) < 60 || Math.abs(sw.x) < 2 * Math.abs(sw.y)) return;
+        sw.done = true;
+        const at = PROFILES.findIndex((q) => q.id === this.profile);
+        const next = PROFILES[Math.min(PROFILES.length - 1, Math.max(0, at + (sw.x < 0 ? 1 : -1)))];
+        if (next.id !== this.profile) { this.setProfile(next.id); cx.notify(); }
+      })
       // Any release ends a drag; one that left its row turns on "moved" for the targets above.
       .on_mouse_move((_e, cx) => { if (this.dragging && !this.moved && this.over) { this.moved = true; cx.notify(); } })
       .on_mouse_up("left", (_e, cx) => { if (this.dragging) { this.dragging = null; this.moved = false; this.over = null; cx.notify(); } })
