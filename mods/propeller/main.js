@@ -490,7 +490,7 @@ ${JSON.stringify(todo, null, 1)}`;
     }
     // Right-click the card: its menu (free RAM), so the card itself stays quiet.
     return h_flex().id("propeller").size_full().rounded(13).overflow_hidden().pl(10).pr(12).gap(12).items_center().bg(t.chrome)
-      .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 60, props: { tab: "propeller" } }))
+      .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 230, height: 12 + 31 * (shared("propeller.update") ? 2 : 1), props: { tab: "propeller" } }))
       .child(div().relative().flex_none().child(octo)
         .when(this.behind > 0 || this.updating, (el) => el.child(div().absolute().top(-2).right(-2).size(16).rounded(8).bg(t.accent)
           .flex().items_center().justify_center().child(svg(`${ART}/arrow-down-to-line.svg`).size(10).text_color("#ffffff")))))
