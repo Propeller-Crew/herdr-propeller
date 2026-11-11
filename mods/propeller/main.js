@@ -187,7 +187,7 @@ export default class Propeller extends View {
       await this.takeImport();
       await this.trackClaude();
       this.trackActivity();
-      this.nameSpaces();
+      await this.nameSpaces();
       await this.sleep();
       await this.save();
     } catch (e) {
@@ -255,7 +255,8 @@ export default class Propeller extends View {
   async refresh(id) {
     const s = spaces().find((x) => x.id === id);
     if (!s) return;
-    const title = this.liveTitle(s) ?? await this.savedTitle(s);
+    const long = this.liveTitle(s) ?? await this.savedTitle(s);
+    const title = long && (await this.shorten([long]))[long];
     if (title && title !== s.name) {
       run("space.rename", { id, name: title });
       (this.state.named ??= {})[id] = title;
@@ -268,7 +269,8 @@ export default class Propeller extends View {
     const s = spaces().find((x) => x.tabs.some((t) => t.id === id));
     if (!s) return;
     const tab = { tabs: [{ id }], machine: s.machine };
-    const title = this.liveTitle(tab) ?? await this.savedTitle(tab);
+    const long = this.liveTitle(tab) ?? await this.savedTitle(tab);
+    const title = long && (await this.shorten([long]))[long];
     if (!title) return;
     if (title !== s.tabs.find((t) => t.id === id)?.name) run("tab.rename", { id, name: title });
     (this.state.tabNamed ??= {})[id] = title;
@@ -426,31 +428,66 @@ ${JSON.stringify(todo, null, 1)}`.replaceAll("/<id>.", only ? `/<id>-${Date.now(
   // A space nobody named is called after what its Claude is doing, as cmux did: Claude's own
   // title for the conversation ("Редизайн застосунку Locality"). It follows the topic while the
   // name is still ours; once you rename the space yourself, it stays yours.
-  nameSpaces() {
+  async nameSpaces() {
     this.state.named ??= {};
+    this.state.tabNamed ??= {};
+    const want = [];
     for (const s of spaces()) {
       const ours = this.state.named[s.id];
       if (s.named && s.name !== ours) { if (ours) delete this.state.named[s.id]; continue; }
       const title = this.liveTitle(s);
-      if (!title || title === s.name) continue;
-      run("space.rename", { id: s.id, name: title });
-      this.state.named[s.id] = title;
+      if (title) want.push({ kind: "space", id: s.id, title, now: s.name });
     }
-    for (const id of Object.keys(this.state.named)) if (!spaces().some((s) => s.id === id)) delete this.state.named[id];
     // Tabs the same way: one nobody named takes its Claude's title, and keeps following it while it's ours.
-    this.state.tabNamed ??= {};
     const live = new Set();
     for (const s of spaces()) for (const tab of s.tabs) {
       live.add(tab.id);
       const ours = this.state.tabNamed[tab.id];
       if (tab.named && tab.name !== ours) { if (ours) delete this.state.tabNamed[tab.id]; continue; }
       const title = this.liveTitle({ tabs: [tab] });
-      if (!title || title === tab.name) continue;
-      run("tab.rename", { id: tab.id, name: title });
-      this.state.tabNamed[tab.id] = title;
+      if (title) want.push({ kind: "tab", id: tab.id, title, now: tab.name });
     }
+    for (const id of Object.keys(this.state.named)) if (!spaces().some((s) => s.id === id)) delete this.state.named[id];
     for (const id of Object.keys(this.state.tabNamed)) if (!live.has(id)) delete this.state.tabNamed[id];
+    const short = await this.shorten(want.map((w) => w.title));
+    for (const w of want) {
+      const name = short[w.title];
+      if (!name || name === w.now) continue;
+      run(w.kind === "space" ? "space.rename" : "tab.rename", { id: w.id, name });
+      (w.kind === "space" ? this.state.named : this.state.tabNamed)[w.id] = name;
+    }
   }
+
+  // Claude's titles describe the task ("Заміна Todoist для контенту"); a sidebar wants a name
+  // ("Контент-тул"). Haiku makes one per title, once: the answers are kept in state.shorts.
+  async shorten(titles) {
+    const cache = (this.state.shorts ??= {});
+    const todo = [...new Set(titles)].filter((t) => !(t in cache));
+    if (todo.length && !(this.shortFailed > Date.now() - 300000)) {
+      const prompt = `Each line below is the title of a conversation with a coding assistant. Turn each into the shortest name that tells which project or subject it is, for a narrow sidebar: 1–3 words, at most 18 characters, the thing itself rather than the task, in the title's language, product and brand names kept as written. Examples: "Редизайн застосунку Locality" → "Locality"; "Кеші та неактивні сесії herdr" → "Кеші herdr"; "Opus 5.5 і Blender для відео" → "Blender-відео"; "Заміна Todoist для контенту" → "Контент-тул"; "Місце на диску ноутбука" → "Місце на диску".
+
+Reply with only a JSON object mapping each title, exactly as given, to its name.
+
+${todo.map((t) => JSON.stringify(t)).join("\n")}`;
+      try {
+        const r = await exec("/bin/zsh", ["-ic", `${CLEAN_ENV} cd ~ && claude -p "$1" --model haiku --output-format json --tools "" < /dev/null`, "zsh", prompt], { timeout: 120000 });
+        if (r.code !== 0) throw new Error(`claude exited ${r.code}: ${(r.stderr || r.stdout).slice(-300)}`);
+        const text = JSON.parse(r.stdout).result ?? "";
+        const got = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
+        for (const t of todo) {
+          const n = typeof got[t] === "string" ? got[t].trim() : "";
+          cache[t] = n && n.length <= 24 ? n : t.split(/\s+/).slice(0, 3).join(" ");
+        }
+      } catch (e) {
+        this.shortFailed = Date.now();
+        console.log("propeller names:", e?.message ?? e);
+      }
+    }
+    const keys = Object.keys(cache);
+    if (keys.length > 400) for (const k of keys.slice(0, keys.length - 400)) delete cache[k];
+    return Object.fromEntries(titles.filter((t) => t in cache).map((t) => [t, cache[t]]));
+  }
+
 
   sleeping(s) {
     if (this.state.dozed[s.id]) return true;
