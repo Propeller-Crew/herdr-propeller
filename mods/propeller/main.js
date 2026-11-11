@@ -291,6 +291,14 @@ ${JSON.stringify(todo, null, 1)}`;
   }
 
   // --- 1. Claude after a reboot -------------------------------------------------
+  async hasTranscript(sid, machine) {
+    this.transcripts ??= new Set();
+    if (this.transcripts.has(sid)) return true;
+    const r = await exec("sh", ["-c", 'ls "$HOME"/.claude/projects/*/"$1".jsonl', "sh", sid], { on: machine, timeout: 5000 }).catch(() => null);
+    if (r?.code === 0) this.transcripts.add(sid);
+    return r?.code === 0;
+  }
+
   async trackClaude() {
     const live = new Set();
     for (const t of terminals()) {
@@ -311,7 +319,12 @@ ${JSON.stringify(todo, null, 1)}`;
         try {
           const r = await exec("cat", [path], { on: machine, timeout: 5000 });
           const s = JSON.parse(r.stdout);
-          if (s.sessionId) this.state.claude[addr] = { shell: g.pid, session: s.sessionId, cwd: fg.cwd ?? s.cwd };
+          // A fork (or a fresh Claude) has its id before it has a conversation: Claude writes the
+          // transcript only with the first message. Resuming that id says "No conversation found",
+          // so a new id counts once its transcript exists; until then the one before it stays.
+          let sid = s.sessionId;
+          if (sid && !(await this.hasTranscript(sid, machine))) sid = prev?.session !== sid ? prev?.session : null;
+          if (sid) this.state.claude[addr] = { shell: g.pid, session: sid, cwd: fg.cwd ?? s.cwd };
         } catch {}
       } else if (prev && prev.shell !== g.pid) {
         // The shell under this terminal changed and Claude isn't running: the core
