@@ -151,7 +151,14 @@ export default class Propeller extends View {
     const dir = await this.repo();
     if (!dir || this.updating) return;
     this.updating = true;
-    const r = await exec("/bin/zsh", ["-ic", "GIT_TERMINAL_PROMPT=0 git pull -q --ff-only && ./install.sh"], { cwd: dir, timeout: 300000 });
+    // When the repo's history was rewritten, a plain pull can't fast-forward. Then, if nothing
+    // here is yours (no edits, every local commit's subject is upstream too), take upstream as is.
+    const cmd = "export GIT_TERMINAL_PROMPT=0; git fetch -q origin || exit 1; " +
+      "if ! git merge -q --ff-only @{u} 2>/dev/null; then " +
+      "[ -z \"$(git status --porcelain --untracked-files=no)\" ] || { echo 'у папці репо є твої правки' >&2; exit 1; }; " +
+      "git log --format=%s @{u}..HEAD | grep -vxF -f <(git log --format=%s @{u}) | grep -q . && { echo 'у папці репо є твої коміти' >&2; exit 1; }; " +
+      "git reset -q --hard @{u} || exit 1; fi; ./install.sh";
+    const r = await exec("/bin/zsh", ["-ic", cmd], { cwd: dir, timeout: 300000 });
     this.updating = false;
     if (r.code === 0) { this.behind = 0; setShared("propeller.update", null); }
     else this.updateError = { at: Date.now(), text: (r.stderr || r.stdout).trim().split("\n").pop() };
