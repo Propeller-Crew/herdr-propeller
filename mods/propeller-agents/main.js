@@ -277,6 +277,7 @@ export default class PropellerAgents extends View {
       .when(on, (el) => el.bg(t.hover))
       .when(!on, (el) => el.hover((x) => x.bg(t.hover)))
       .on_click(() => { run("space.select", { id: s.id }); run("tab.select", { id: tab.id }); })
+      .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 150, props: { tab: "tab", target: { id: tab.id, space: s.id } } }))
       .child(div().w(1).h(14).flex_none().bg(t.border))
       .child(div().flex_1().min_w(0).truncate().text_size(12)
         .when(st.kind === "unread", (el) => el.font_semibold())

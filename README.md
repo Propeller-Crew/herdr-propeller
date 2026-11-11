@@ -28,8 +28,9 @@ workspace app. Built as Herdr mods and config, not a fork, so Herdr's updates ke
   appearances change together, and the text keeps its contrast.
 - **New spaces start with Claude.** Cmd+N and the sidebar's + open a space in the shown
   profile's folder with Claude running; Cmd+T stays a plain terminal tab.
-- **Spaces name themselves.** A space nobody named takes its Claude's title for the
-  conversation and follows the topic; rename it yourself and the name stays yours.
+- **Spaces and tabs name themselves.** A space or tab nobody named takes its Claude's title
+  for the conversation and follows the topic; rename it yourself and the name stays yours.
+  Right-click a space for «Оновити іконку й назву», a tab for «Оновити назву».
 
 The interface is in Ukrainian.
 

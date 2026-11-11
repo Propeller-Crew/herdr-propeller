@@ -41,6 +41,7 @@ function propellerRun(command, args) {
   if (command === "propeller.free") return setShared("propeller.free", Date.now());
   if (command === "propeller.colors") return openOverlay({ mod: "propeller-colors", kind: "dialog", width: 300, height: 500 });
   if (command === "propeller.update") return setShared("propeller.updateNow", Date.now());
+  if (command === "propeller.refreshTab") return setShared("propeller.refresh", { tab: args.id, at: Date.now() });
   const s = spaces().find((x) => x.id === args.id);
   if (!s) return;
   if (command === "propeller.refresh") setShared("propeller.refresh", { id: s.id, at: Date.now() });
@@ -75,10 +76,13 @@ rep('''    case "tab":''', '''    case "propeller":
       ];
     case "tab":''')
 rep('''  if (command === "propeller.sleep") return''', '''  if (command === "propeller.free") return "mods/propeller-art/moon.svg";
-  if (command === "propeller.refresh") return "mods/propeller-art/sparkles.svg";
+  if (command === "propeller.refresh" || command === "propeller.refreshTab") return "mods/propeller-art/sparkles.svg";
   if (command === "propeller.colors") return "mods/propeller-art/palette.svg";
   if (command === "propeller.update") return "mods/propeller-art/arrow-down-to-line.svg";
   if (command === "propeller.sleep") return''')
+# A tab's menu: «Оновити назву», after its Claude's conversation (the propeller mod does it).
+rep('''        ["Rename", "tab.rename", { id: tg.id }],''', '''        ["Оновити назву", "propeller.refreshTab", { id: tg.id }],
+        ["Rename", "tab.rename", { id: tg.id }],''')
 # cmd-t opens a plain tab, not our Claude ones: no shortcut hint on them.
 rep('''child(shortcut(it[1], it[2]))''', '''child(it[2]?.argv ? "" : shortcut(it[1], it[2]))''')
 # A new space starts with Claude, like cmd-n and the sidebar's +.

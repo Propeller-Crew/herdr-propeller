@@ -51,4 +51,7 @@ swap('''        .when(Boolean(program?.icon), el =>''', '''        .when(Boolean
 swap('''program.tint ? svg(program.icon).size(14).text_color(c.active ? t.ansi3 : t.muted)''', '''program.tint ? svg(program.icon).size(14).text_color(c.active ? t.foreground : t.muted)''')
 swap('''.child(div().max_w(170).truncate()''', '''.child(div().max_w(200).truncate()''')
 
+# 5. Right-click a tab: our menu (patches/propeller-menu.py), with «Оновити назву» on top.
+swap('''openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab",''', '''openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, props: { tab: "tab",''')
+
 open(path, "w").write(s)

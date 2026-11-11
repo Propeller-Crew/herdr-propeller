@@ -85,7 +85,7 @@ export default class Propeller extends View {
       if (re?.at && re.at !== this.refreshed) {
         this.refreshed = re.at;
         setShared("propeller.refresh", null);
-        cx.spawn(async () => { await this.refresh(re.id); });
+        cx.spawn(async () => { await (re.tab ? this.refreshTab(re.tab) : this.refresh(re.id)); });
       }
       const ask = shared("space.icons.ask");
       if (ask && ask !== this.asked && !shared("space.icons.busy")) {
@@ -263,6 +263,17 @@ export default class Propeller extends View {
     if (!s.machine) await this.pickIcons(id, title ?? s.name);
   }
 
+  // The same for one tab: named after its own Claude's conversation, following it from then on.
+  async refreshTab(id) {
+    const s = spaces().find((x) => x.tabs.some((t) => t.id === id));
+    if (!s) return;
+    const tab = { tabs: [{ id }], machine: s.machine };
+    const title = this.liveTitle(tab) ?? await this.savedTitle(tab);
+    if (!title) return;
+    if (title !== s.tabs.find((t) => t.id === id)?.name) run("tab.rename", { id, name: title });
+    (this.state.tabNamed ??= {})[id] = title;
+  }
+
   // The title Claude gives the conversation in this space's first agent tab, if it's a real one.
   liveTitle(s) {
     const tabs = new Set(s.tabs.map((t) => t.id));
@@ -426,6 +437,19 @@ ${JSON.stringify(todo, null, 1)}`.replaceAll("/<id>.", only ? `/<id>-${Date.now(
       this.state.named[s.id] = title;
     }
     for (const id of Object.keys(this.state.named)) if (!spaces().some((s) => s.id === id)) delete this.state.named[id];
+    // Tabs the same way: one nobody named takes its Claude's title, and keeps following it while it's ours.
+    this.state.tabNamed ??= {};
+    const live = new Set();
+    for (const s of spaces()) for (const tab of s.tabs) {
+      live.add(tab.id);
+      const ours = this.state.tabNamed[tab.id];
+      if (tab.named && tab.name !== ours) { if (ours) delete this.state.tabNamed[tab.id]; continue; }
+      const title = this.liveTitle({ tabs: [tab] });
+      if (!title || title === tab.name) continue;
+      run("tab.rename", { id: tab.id, name: title });
+      this.state.tabNamed[tab.id] = title;
+    }
+    for (const id of Object.keys(this.state.tabNamed)) if (!live.has(id)) delete this.state.tabNamed[id];
   }
 
   sleeping(s) {
