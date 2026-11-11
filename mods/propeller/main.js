@@ -67,7 +67,7 @@ export default class Propeller extends View {
     // activity (the import itself made them).
     // dozed: spaces you dragged into "Сплять" yourself -> "here" while you're still in them,
     // "away" once you've left; opening one again (or its agent working) wakes it.
-    this.state = { seen: {}, claude: {}, settled: {}, pending: {}, quiet: {}, dozed: {} };
+    this.state = { seen: {}, claude: {}, settled: {}, pending: {}, quiet: {}, dozed: {}, named: {} };
     this.saved = "";
     this.limits = null;
     this.busy = false;
@@ -180,6 +180,7 @@ export default class Propeller extends View {
       await this.takeImport();
       await this.trackClaude();
       this.trackActivity();
+      this.nameSpaces();
       await this.sleep();
       await this.save();
     } catch (e) {
@@ -352,6 +353,26 @@ ${JSON.stringify(todo, null, 1)}`;
     for (const id of Object.keys(this.state.quiet)) if (!ids.has(id) || this.state.quiet[id] < now - DAY) delete this.state.quiet[id];
     const live = new Set(terminals().map((t) => t.address));
     if (live.size) for (const t of Object.keys(this.state.pending)) if (!live.has(t)) delete this.state.pending[t];
+  }
+
+  // A space nobody named is called after what its Claude is doing, as cmux did: Claude's own
+  // title for the conversation ("Редизайн застосунку Locality"). It follows the topic while the
+  // name is still ours; once you rename the space yourself, it stays yours.
+  nameSpaces() {
+    this.state.named ??= {};
+    const all = panes();
+    for (const s of spaces()) {
+      const ours = this.state.named[s.id];
+      if (s.named && s.name !== ours) { if (ours) delete this.state.named[s.id]; continue; }
+      const tabs = new Set(s.tabs.map((t) => t.id));
+      const p = all.find((p) => tabs.has(p.tab) && p.program?.agent && p.title);
+      const title = (p?.title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
+      if (!title || /^[~/]/.test(title) || title.includes("@") || /^claude( code)?$/i.test(title) || title === p.program?.name) continue;
+      if (title === s.name) continue;
+      run("space.rename", { id: s.id, name: title });
+      this.state.named[s.id] = title;
+    }
+    for (const id of Object.keys(this.state.named)) if (!spaces().some((s) => s.id === id)) delete this.state.named[id];
   }
 
   sleeping(s) {
