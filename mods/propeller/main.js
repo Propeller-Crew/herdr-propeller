@@ -42,6 +42,14 @@ const colorsPath = () => `${home()}/.config/herdr-app/data/propeller-colors.json
 const importPath = () => `${home()}/.config/herdr-app/data/propeller-import.json`;
 const machineOf = (addr) => (addr.includes("/") ? addr.split("/")[0] : null);
 
+// hc() has no timeout, and one stuck call froze the activity clock for a night (11.11.2026).
+// The same hc through exec, which gives up after `timeout`; plain hc() if it isn't where Herdr puts it.
+let hcPath;
+async function hcWait(args, timeout = 15000) {
+  if (hcPath === undefined) hcPath = await fs.access(`${home()}/.local/bin/hc`).then(() => `${home()}/.local/bin/hc`, () => null);
+  return hcPath ? exec(hcPath, args, { timeout }) : hc(args);
+}
+
 function left(ts) {
   const s = Math.max(0, Math.round(ts - Date.now() / 1000));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
@@ -164,8 +172,10 @@ export default class Propeller extends View {
   }
 
   async tick() {
-    if (this.busy) return;
-    this.busy = true;
+    // A call that never answers (a machine gone mid-request) must not stop the clock for good:
+    // after two minutes the next tick goes ahead anyway.
+    if (this.busy && Date.now() - this.busy < 120000) return;
+    this.busy = Date.now();
     try {
       await this.takeImport();
       await this.trackClaude();
@@ -175,7 +185,7 @@ export default class Propeller extends View {
     } catch (e) {
       console.log("propeller tick:", e?.message ?? e);
     } finally {
-      this.busy = false;
+      this.busy = 0;
     }
   }
 
@@ -288,7 +298,7 @@ ${JSON.stringify(todo, null, 1)}`;
       live.add(addr);
       let g;
       try {
-        const r = await hc(["get", addr, "--json"]);
+        const r = await hcWait(["get", addr, "--json"]);
         if (r.code !== 0) continue;
         g = JSON.parse(r.stdout);
       } catch { continue; }
@@ -308,7 +318,7 @@ ${JSON.stringify(todo, null, 1)}`;
         // Unset a parent Claude session's markers first (same line as shepherdr's clean-env.js):
         // a core started from inside Claude Code hands them to every terminal, and Claude then
         // stops saving the conversation.
-        await hc(["send", addr, `${CLEAN_ENV} claude --resume ${prev.session}`]);
+        await hcWait(["send", addr, `${CLEAN_ENV} claude --resume ${prev.session}`]);
         prev.shell = g.pid;
       } else if (prev) {
         // Same shell, Claude gone: the person quit it on purpose.
