@@ -33,6 +33,7 @@ function propellerItems(id) {
   return [
     [to === "work" ? "Перенести в Робоче" : "Перенести в Особисте", "propeller.profile", { id, to }],
     asleep(s) ? ["Розбудити", "propeller.sleep", { id, on: false }] : ["Приспати", "propeller.sleep", { id, on: true }],
+    ["Оновити іконку й назву", "propeller.refresh", { id }],
   ];
 }
 const placeOf = (id) => { const s = spaces().find((x) => x.id === id); return s ? place(s) : undefined; };
@@ -42,6 +43,7 @@ function propellerRun(command, args) {
   if (command === "propeller.update") return setShared("propeller.updateNow", Date.now());
   const s = spaces().find((x) => x.id === args.id);
   if (!s) return;
+  if (command === "propeller.refresh") setShared("propeller.refresh", { id: s.id, at: Date.now() });
   if (command === "propeller.profile") setShared("propeller.profile", { ...(shared("propeller.profile") ?? {}), [s.id]: args.to });
   if (command === "propeller.sleep") {
     // Into "Сплять" or out of it: the propeller mod sees the move and settles or wakes the space.
@@ -73,6 +75,7 @@ rep('''    case "tab":''', '''    case "propeller":
       ];
     case "tab":''')
 rep('''  if (command === "propeller.sleep") return''', '''  if (command === "propeller.free") return "mods/propeller-art/moon.svg";
+  if (command === "propeller.refresh") return "mods/propeller-art/sparkles.svg";
   if (command === "propeller.colors") return "mods/propeller-art/palette.svg";
   if (command === "propeller.update") return "mods/propeller-art/arrow-down-to-line.svg";
   if (command === "propeller.sleep") return''')

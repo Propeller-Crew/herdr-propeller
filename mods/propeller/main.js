@@ -80,6 +80,13 @@ export default class Propeller extends View {
     });
     cx.timer.every(1000, (cx) => { if (Object.keys(this.state.pending).length) this.wake(); });
     cx.timer.every(1000, (cx) => {
+      // «Оновити іконку й назву» from a space's right-click menu.
+      const re = shared("propeller.refresh");
+      if (re?.at && re.at !== this.refreshed) {
+        this.refreshed = re.at;
+        setShared("propeller.refresh", null);
+        cx.spawn(async () => { await this.refresh(re.id); });
+      }
       const ask = shared("space.icons.ask");
       if (ask && ask !== this.asked && !shared("space.icons.busy")) {
         this.asked = ask;
@@ -243,10 +250,47 @@ export default class Propeller extends View {
   // Our own products: the app's real icon or logo from its code; a brand: its Simple Icons logo;
   // anything else: a Lucide icon. Files go
   // under ~/.config/herdr-app/space-icons (Herdr shows images only from its own folder).
-  async pickIcons() {
+  // One space again, by hand: its name from what its Claude calls the conversation now, then a
+  // fresh icon for that name. The name follows the topic afterwards (nameSpaces), until you rename it.
+  async refresh(id) {
+    const s = spaces().find((x) => x.id === id);
+    if (!s) return;
+    const title = this.liveTitle(s) ?? await this.savedTitle(s);
+    if (title && title !== s.name) {
+      run("space.rename", { id, name: title });
+      (this.state.named ??= {})[id] = title;
+    }
+    if (!s.machine) await this.pickIcons(id, title ?? s.name);
+  }
+
+  // The title Claude gives the conversation in this space's first agent tab, if it's a real one.
+  liveTitle(s) {
+    const tabs = new Set(s.tabs.map((t) => t.id));
+    const p = panes().find((p) => tabs.has(p.tab) && p.program?.agent && p.title);
+    const title = (p?.title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
+    if (!title || /^[~/]/.test(title) || title.includes("@") || /^claude( code)?$/i.test(title) || title === p.program?.name) return null;
+    return title;
+  }
+
+  // A sleeping space has no Claude to ask: the last title saved in its conversation's transcript.
+  async savedTitle(s) {
+    const tabs = new Set(s.tabs.map((t) => t.id));
+    for (const p of panes()) {
+      if (!p.terminal || !tabs.has(p.tab)) continue;
+      const w = this.state.pending[p.terminal] ?? this.state.claude[p.terminal];
+      const sid = typeof w === "string" ? w : w?.session;
+      if (!sid) continue;
+      const r = await exec("sh", ["-c", `/usr/bin/grep -h -o '"aiTitle":"[^"]*"' "$HOME"/.claude/projects/*/"$1".jsonl | tail -1`, "sh", sid], { on: s.machine || null, timeout: 15000 }).catch(() => null);
+      const m = r?.stdout?.match(/"aiTitle":"([^"]*)"/);
+      if (m?.[1]?.trim()) return m[1].trim();
+    }
+    return null;
+  }
+
+  async pickIcons(only, name) {
     const icons = shared("space.icons") ?? {};
-    const todo = spaces().filter((s) => !s.machine && !icons[s.id]).map((s) => ({
-      id: s.id, name: s.name, folder: s.folder,
+    const todo = spaces().filter((s) => !s.machine && (only ? s.id === only : !icons[s.id])).map((s) => ({
+      id: s.id, name: only ? name ?? s.name : s.name, folder: s.folder,
       tabs: s.tabs.filter((t) => t.named).map((t) => t.name),
     }));
     if (!todo.length) return;
@@ -268,7 +312,7 @@ Never draw or invent an SVG yourself.
 
 Reply with only one JSON object: {"<id>": {"image": "…"} or {"glyph": "…", "color"?: "…"}, …}, every id below, nothing else.
 
-${JSON.stringify(todo, null, 1)}`;
+${JSON.stringify(todo, null, 1)}`.replaceAll("/<id>.", only ? `/<id>-${Date.now().toString(36)}.` : "/<id>.");
     try {
       await fs.mkdir(dir, { recursive: true });
       // zsh -ic: the app started from Spotlight has a bare PATH; claude lives where ~/.zshrc (nvm) puts it.
@@ -373,15 +417,11 @@ ${JSON.stringify(todo, null, 1)}`;
   // name is still ours; once you rename the space yourself, it stays yours.
   nameSpaces() {
     this.state.named ??= {};
-    const all = panes();
     for (const s of spaces()) {
       const ours = this.state.named[s.id];
       if (s.named && s.name !== ours) { if (ours) delete this.state.named[s.id]; continue; }
-      const tabs = new Set(s.tabs.map((t) => t.id));
-      const p = all.find((p) => tabs.has(p.tab) && p.program?.agent && p.title);
-      const title = (p?.title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
-      if (!title || /^[~/]/.test(title) || title.includes("@") || /^claude( code)?$/i.test(title) || title === p.program?.name) continue;
-      if (title === s.name) continue;
+      const title = this.liveTitle(s);
+      if (!title || title === s.name) continue;
       run("space.rename", { id: s.id, name: title });
       this.state.named[s.id] = title;
     }
