@@ -98,7 +98,19 @@ function tabTitle(tab, all) {
 // An unnamed space is called after its folder's path; the last folder says enough.
 const spaceName = (s) => (/^[~/]/.test(s.name) ? s.name.split("/").filter(Boolean).pop() ?? s.name : s.name);
 
+// A tab whose Claude never reported to Herdr (see the propeller mod's trackClaude): its state
+// from Claude's session file instead, so it still lights up as working or waiting.
+function withClaude(tab) {
+  if (tab.status) return tab;
+  const quiet = shared("propeller.claudeStatus") ?? {};
+  const q = panes().filter((p) => p.tab === tab.id && p.terminal).map((p) => quiet[p.terminal]).find(Boolean);
+  if (!q) return tab;
+  const status = q.status === "busy" ? "working" : q.status === "waiting" ? "blocked" : "idle";
+  return { ...tab, status, changed_at: q.at ?? tab.changed_at, working_since: status === "working" ? q.at : null };
+}
+
 function tabState(tab) {
+  tab = withClaude(tab);
   if (tab.status === "blocked") return { kind: "needs", since: tab.changed_at };
   if (tab.status === "working") return { kind: "working", since: tab.working_since ?? tab.changed_at };
   if (tab.status === "done") return { kind: "unread", since: tab.changed_at };

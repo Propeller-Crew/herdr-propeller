@@ -46,7 +46,8 @@ const machineOf = (addr) => (addr.includes("/") ? addr.split("/")[0] : null);
 // The same hc through exec, which gives up after `timeout`; plain hc() if it isn't where Herdr puts it.
 let hcPath;
 async function hcWait(args, timeout = 15000) {
-  if (hcPath === undefined) hcPath = await fs.access(`${home()}/.local/bin/hc`).then(() => `${home()}/.local/bin/hc`, () => null);
+  // fs here has exists(), not access() (gpui-kit.d.ts); access() threw, and every hcWait with it (11–12.11).
+  if (hcPath === undefined) hcPath = (await fs.exists(`${home()}/.local/bin/hc`).catch(() => false)) ? `${home()}/.local/bin/hc` : null;
   return hcPath ? exec(hcPath, args, { timeout }) : hc(args);
 }
 
@@ -365,6 +366,11 @@ ${JSON.stringify(todo, null, 1)}`.replaceAll("/<id>.", only ? `/<id>-${Date.now(
 
   async trackClaude() {
     const live = new Set();
+    // Claude asks the terminal at start whether it's Herdr (OSC 7501) and reports its state only
+    // when the answer came. A Claude that missed it (a tab opened in a busy moment) shows as a
+    // plain shell for its whole run. For those, the state from its own session file
+    // (busy / waiting / idle), for the sidebar: shared("propeller.claudeStatus") = {terminal: {status, at}}.
+    const quiet = {};
     for (const t of terminals()) {
       if (t.state !== "live") continue;
       const addr = t.address;
@@ -383,6 +389,7 @@ ${JSON.stringify(todo, null, 1)}`.replaceAll("/<id>.", only ? `/<id>-${Date.now(
         try {
           const r = await exec("cat", [path], { on: machine, timeout: 5000 });
           const s = JSON.parse(r.stdout);
+          if (!t.status && s.status) quiet[addr] = { status: s.status, at: s.statusUpdatedAt ?? null };
           // A fork (or a fresh Claude) has its id before it has a conversation: Claude writes the
           // transcript only with the first message. Resuming that id says "No conversation found",
           // so a new id counts once its transcript exists; until then the one before it stays.
@@ -403,6 +410,8 @@ ${JSON.stringify(todo, null, 1)}`.replaceAll("/<id>.", only ? `/<id>-${Date.now(
         delete this.state.claude[addr];
       }
     }
+    const was = shared("propeller.claudeStatus") ?? {};
+    if (JSON.stringify(was) !== JSON.stringify(quiet)) setShared("propeller.claudeStatus", quiet);
     // Forget terminals that are closed for good. Keep the rest while the core reports none
     // (it may still be starting after a reboot).
     if (live.size) for (const addr of Object.keys(this.state.claude)) if (!live.has(addr)) delete this.state.claude[addr];
