@@ -13,6 +13,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, panes, terminals, focused, run, theme, shared, setShared, layout, home, openOverlay, nextCommand } from "herdr";
+import * as fs from "fs/promises";
 
 const DAY = 24 * 3600 * 1000;
 const ART = "mods/propeller-art";
@@ -115,13 +116,17 @@ export default class PropellerAgents extends View {
     this.profile = localStorage.getItem("profile") ?? "work";
     this.lastActive = null;
     this.order = []; // space ids as shown, for alt-up/down
+    this.rowsOrder = []; // [space id, tab id | null] as shown, for cmd-alt-up/down
+    this.closing = null; // what Cmd+W is closing, until those tabs are gone (closed() commits it)
     cx.spawn(async (cx) => {
       for (;;) {
         const c = String(await nextCommand()).split(".").pop();
         if (c === "next" || c === "prev") this.step(c === "next" ? 1 : -1);
         if (c === "work" || c === "personal") this.setProfile(c);
         if (c === "new") this.newSpace();
-        if (c === "close") this.closeTab();
+        if (c === "close") await this.closeTab();
+        if (c === "reopen") this.reopen();
+        if (c === "down" || c === "up") this.walk(c === "down" ? 1 : -1);
         cx.notify();
       }
     });
@@ -131,7 +136,7 @@ export default class PropellerAgents extends View {
 
   // Cmd+W. A tab whose Claude opened worker tabs (herdr-tabs labels them propeller.parent, or
   // Herdr's own parent) asks first: close them too, or only this one. Any other tab just closes.
-  closeTab() {
+  async closeTab() {
     const tab = focused()?.tab;
     if (!tab) return;
     const tabOf = new Map(panes().filter((p) => p.terminal).map((p) => [p.terminal, p.tab]));
@@ -143,9 +148,72 @@ export default class PropellerAgents extends View {
       const wt = tabOf.get(t.address);
       if (boss && mine.has(boss) && wt && wt !== tab) workers.add(wt);
     }
+    this.closing = { at: Date.now(), tabs: await this.snapshot([tab, ...workers]) };
     if (!workers.size) return run("tab.close", { id: tab });
     openOverlay({ mod: "propeller-menu", kind: "dialog", width: 280, height: 116,
       props: { tab: "close", target: { id: tab, workers: [...workers] } } });
+  }
+
+  // Cmd+Shift+T brings back what Cmd+W closed: each tab in its space (a new space in the same
+  // folder when that one is gone), with its name, and its Claude conversation resumed. The
+  // conversation comes from the propeller mod's state file, read before the tab closes.
+  async snapshot(ids) {
+    let claude = {};
+    try { claude = JSON.parse(await fs.readFile(`${home()}/.config/herdr-app/data/propeller-state.json`, "utf8")).claude ?? {}; } catch {}
+    const cwd = Object.fromEntries(terminals().map((t) => [t.address, t.cwd]));
+    const out = [];
+    for (const id of ids) {
+      const s = spaces().find((x) => x.tabs.some((t) => t.id === id));
+      const tab = s?.tabs.find((t) => t.id === id);
+      const addr = panes().find((p) => p.tab === id && p.terminal)?.terminal;
+      if (!s || !addr) continue;
+      out.push({ id, space: s.id, machine: s.machine ?? "", spaceName: s.named ? s.name : "", name: tab.named ? tab.name : "",
+        folder: claude[addr]?.cwd ?? cwd[addr] ?? null, session: claude[addr]?.session ?? null });
+    }
+    return out;
+  }
+
+  // Called on every render: the tabs Cmd+W asked about that are now gone go on the reopen stack.
+  closed() {
+    const c = this.closing;
+    if (!c) return;
+    const live = new Set(spaces().flatMap((s) => s.tabs.map((t) => t.id)));
+    const gone = c.tabs.filter((t) => !live.has(t.id));
+    if (!gone.length) { if (Date.now() - c.at > 120000) this.closing = null; return; }
+    this.closing = null;
+    let stack = [];
+    try { stack = JSON.parse(localStorage.getItem("closed") ?? "[]"); } catch {}
+    stack.push(gone);
+    try { localStorage.setItem("closed", JSON.stringify(stack.slice(-20))); } catch {}
+  }
+
+  reopen() {
+    let stack = [];
+    try { stack = JSON.parse(localStorage.getItem("closed") ?? "[]"); } catch {}
+    const group = stack.pop();
+    if (!group) return;
+    try { localStorage.setItem("closed", JSON.stringify(stack)); } catch {}
+    let into = null; // a space made for tabs whose own space is gone: the rest go there too
+    for (const t of group) {
+      const args = {};
+      if (t.name) args.name = t.name;
+      if (t.folder) args.folder = t.folder;
+      if (t.session) args.argv = ["claude", "--resume", t.session];
+      if (spaces().some((s) => s.id === t.space)) run("tab.new", { ...args, space: t.space });
+      else if (into) run("tab.new", args);
+      else { const { name, ...rest } = args; run("space.new", { ...rest, ...(name ? { tab: name } : {}), name: t.spaceName ?? "", machine: t.machine }); into = true; }
+    }
+  }
+
+  // Cmd+Alt+Down/Up: the next or previous row of the sidebar, tabs included, round the ends.
+  walk(dir) {
+    const rows = this.rowsOrder, len = rows.length;
+    if (!len) return;
+    const f = focused(), sp = spaces().find((s) => s.active)?.id;
+    let at = rows.findIndex(([s, t]) => s === sp && (t === null || t === f?.tab));
+    const [s, t] = rows[at < 0 ? 0 : (at + dir + len) % len];
+    run("space.select", { id: s });
+    if (t) run("tab.select", { id: t });
   }
 
   state(s, seen, asleep) {
@@ -336,6 +404,7 @@ export default class PropellerAgents extends View {
   }
 
   render() {
+    this.closed();
     const t = theme();
     const seen = shared("propeller.seen") ?? {};
     const of = (shared("space-folders") ?? {})[""]?.of ?? {};
@@ -363,8 +432,8 @@ export default class PropellerAgents extends View {
     const W = this.w ?? (shared("sidebar.width") ?? 268);
     const at = PROFILES.findIndex((p) => p.id === this.profile);
     const pages = PROFILES.map((p, i) => {
-      const { rows, order } = this.page(byProfile[p.id], all, t);
-      if (p.id === this.profile) this.order = order;
+      const { rows, order, flat } = this.page(byProfile[p.id], all, t);
+      if (p.id === this.profile) { this.order = order; this.rowsOrder = flat; }
       return v_flex().id(`page-${p.id}`).absolute().top(0).bottom(0).w_full().left((i - at) * W + (this.drag ?? 0))
         .spring("left", { response: 340, damping: 1 })
         .px(6).pb(8).gap(1).overflow_y_scroll().children(rows);
@@ -381,7 +450,7 @@ export default class PropellerAgents extends View {
 
   // One profile's list: its groups, rows and tabs; order is the rows' space ids for alt-up/down.
   page(groups, all, t) {
-    const rows = [], order = [];
+    const rows = [], order = [], flat = [];
     for (const sec of SECTIONS) {
       const list = groups[sec.id];
       if (!list.length) continue;
@@ -391,7 +460,8 @@ export default class PropellerAgents extends View {
       for (const { s, st } of capped ? list.slice(0, SLEEPING_PREVIEW) : list) {
         rows.push(this.spaceRow(s, st, t));
         order.push(s.id);
-        if (sec.id !== "inactive" && s.tabs.length > 1) for (const tab of s.tabs) rows.push(this.tabRow(s, tab, all, t));
+        if (sec.id !== "inactive" && s.tabs.length > 1) for (const tab of s.tabs) { rows.push(this.tabRow(s, tab, all, t)); flat.push([s.id, tab.id]); }
+        else flat.push([s.id, null]);
       }
       if (capped) rows.push(div().id("more").h(24).flex_none().px(10).flex().items_center().text_size(12).text_color(t.dim)
         .rounded(6).hover((x) => x.bg(t.hover).text_color(t.foreground))
@@ -400,7 +470,7 @@ export default class PropellerAgents extends View {
       rows.push(div().h(6).flex_none());
     }
     if (!rows.length) rows.push(div().px(10).py(6).text_size(12).text_color(t.dim).child("Тут поки порожньо"));
-    return { rows, order };
+    return { rows, order, flat };
   }
 
   // A two-finger sideways swipe: the pages follow it, and on release they go to the next

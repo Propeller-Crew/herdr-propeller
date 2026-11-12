@@ -83,7 +83,12 @@
     "ctrl-shift-pagedown": "propeller-agents.next",
     "ctrl-shift-pageup": "propeller-agents.prev",
     "cmd-n": "propeller-agents.new",
-    "cmd-w": "propeller-agents.close"
+    "cmd-w": "propeller-agents.close",
+    "cmd-shift-t": "propeller-agents.reopen",
+    "cmd-alt-left": "tab.prev",
+    "cmd-alt-right": "tab.next",
+    "cmd-alt-up": "propeller-agents.up",
+    "cmd-alt-down": "propeller-agents.down"
   },
   "layout:propeller-glass": {
     "alt-down": "propeller-agents.next",
@@ -91,6 +96,11 @@
     "ctrl-shift-pagedown": "propeller-agents.next",
     "ctrl-shift-pageup": "propeller-agents.prev",
     "cmd-n": "propeller-agents.new",
-    "cmd-w": "propeller-agents.close"
+    "cmd-w": "propeller-agents.close",
+    "cmd-shift-t": "propeller-agents.reopen",
+    "cmd-alt-left": "tab.prev",
+    "cmd-alt-right": "tab.next",
+    "cmd-alt-up": "propeller-agents.up",
+    "cmd-alt-down": "propeller-agents.down"
   }
 }
