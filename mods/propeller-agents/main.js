@@ -19,7 +19,7 @@ const ART = "mods/propeller-art";
 // The cmux sidebar's section colours.
 const SECTIONS = [
   { id: "needs", name: "Чекає на тебе", color: "#F5A524", icon: "hand" },
-  { id: "unread", name: "Нове", color: "#4C9EEB", icon: "sparkles" },
+  { id: "unread", name: "Нове", color: "#4C9EEB", icon: "dot" },
   { id: "working", name: "В роботі", color: "#9B7BFF", icon: "zap" },
   { id: "done", name: "Готово", color: "#34C759", icon: "badge-check" },
   { id: "inactive", name: "Сплять", color: "#8E8E93", icon: "moon" },
@@ -205,7 +205,7 @@ export default class PropellerAgents extends View {
     const box = h_flex().w(22).h(16).flex_none().items_center().justify_end();
     if (kind === "working") return box.child(spinner(this.spin, "#9B7BFF", size - 1));
     if (kind === "needs") return box.child(svg(`${ART}/circle-dot.svg`).size(size).text_color("#F5A524"));
-    if (kind === "unread") return box.child(svg(`${ART}/sparkles.svg`).size(size).text_color("#4C9EEB"));
+    if (kind === "unread") return box.child(svg(`${ART}/dot.svg`).size(size).text_color("#4C9EEB"));
     if (kind === "done") return box.child(svg(`${ART}/check.svg`).size(size - 2).text_color(t.muted));
     if (kind === "inactive") return box.child(svg(`${ART}/moon.svg`).size(size - 3).text_color(t.dim));
     return box;
