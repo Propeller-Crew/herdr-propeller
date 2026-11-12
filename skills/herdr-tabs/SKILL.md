@@ -40,7 +40,9 @@ folder is the project's (the vault's MAP.md → «Код», or `~/code/<name>`).
    `["/bin/zsh", "-ic", "claude \"$(cat <brief>)\"; exec zsh -i"]`
    In a git repo use `claude -w <name>` (its own worktree, so two sessions don't edit the same files).
    Plain `claude`, never by an absolute path.
-3. **Tell the user in one line** which tab you opened, in which space and what it does.
+3. **Mark it as your worker**, so Cmd+W on your tab offers to close it too:
+   `hc label <terminal> propeller.parent=$(python3 ~/.claude/skills/herdr-tabs/here.py | python3 -c 'import json,sys; print(json.load(sys.stdin)["terminal"])')`
+4. **Tell the user in one line** which tab you opened, in which space and what it does.
    It opens in the background; don't switch them to it unless they asked to go there.
 
 ## Watch it

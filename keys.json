@@ -82,13 +82,15 @@
     "alt-up": "propeller-agents.prev",
     "ctrl-shift-pagedown": "propeller-agents.next",
     "ctrl-shift-pageup": "propeller-agents.prev",
-    "cmd-n": "propeller-agents.new"
+    "cmd-n": "propeller-agents.new",
+    "cmd-w": "propeller-agents.close"
   },
   "layout:propeller-glass": {
     "alt-down": "propeller-agents.next",
     "alt-up": "propeller-agents.prev",
     "ctrl-shift-pagedown": "propeller-agents.next",
     "ctrl-shift-pageup": "propeller-agents.prev",
-    "cmd-n": "propeller-agents.new"
+    "cmd-n": "propeller-agents.new",
+    "cmd-w": "propeller-agents.close"
   }
 }

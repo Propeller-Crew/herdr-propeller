@@ -12,7 +12,7 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, panes, run, theme, shared, setShared, layout, home, openOverlay, nextCommand } from "herdr";
+import { spaces, panes, terminals, focused, run, theme, shared, setShared, layout, home, openOverlay, nextCommand } from "herdr";
 
 const DAY = 24 * 3600 * 1000;
 const ART = "mods/propeller-art";
@@ -121,11 +121,31 @@ export default class PropellerAgents extends View {
         if (c === "next" || c === "prev") this.step(c === "next" ? 1 : -1);
         if (c === "work" || c === "personal") this.setProfile(c);
         if (c === "new") this.newSpace();
+        if (c === "close") this.closeTab();
         cx.notify();
       }
     });
     // Times ("21m") move on: once every 30 s is enough. The dots animate natively.
     cx.timer.every(30000, (cx) => cx.notify());
+  }
+
+  // Cmd+W. A tab whose Claude opened worker tabs (herdr-tabs labels them propeller.parent, or
+  // Herdr's own parent) asks first: close them too, or only this one. Any other tab just closes.
+  closeTab() {
+    const tab = focused()?.tab;
+    if (!tab) return;
+    const tabOf = new Map(panes().filter((p) => p.terminal).map((p) => [p.terminal, p.tab]));
+    const mine = new Set([...tabOf].filter(([, t]) => t === tab).map(([a]) => a));
+    const workers = new Set();
+    for (const t of terminals()) {
+      if (t.state !== "live") continue;
+      const boss = t.labels?.["propeller.parent"] ?? t.parent;
+      const wt = tabOf.get(t.address);
+      if (boss && mine.has(boss) && wt && wt !== tab) workers.add(wt);
+    }
+    if (!workers.size) return run("tab.close", { id: tab });
+    openOverlay({ mod: "propeller-menu", kind: "dialog", width: 280, height: 116,
+      props: { tab: "close", target: { id: tab, workers: [...workers] } } });
   }
 
   state(s, seen, asleep) {

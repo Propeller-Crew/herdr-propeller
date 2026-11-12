@@ -42,6 +42,11 @@ function propellerRun(command, args) {
   if (command === "propeller.colors") return openOverlay({ mod: "propeller-colors", kind: "dialog", width: 300, height: 500 });
   if (command === "propeller.update") return setShared("propeller.updateNow", Date.now());
   if (command === "propeller.refreshTab") return setShared("propeller.refresh", { tab: args.id, at: Date.now() });
+  if (command === "propeller.closeWith") {
+    for (const id of args.workers ?? []) run("tab.close", { id, confirmed: true });
+    return run("tab.close", { id: args.id, confirmed: true });
+  }
+  if (command === "propeller.cancel") return;
   const s = spaces().find((x) => x.id === args.id);
   if (!s) return;
   if (command === "propeller.refresh") setShared("propeller.refresh", { id: s.id, at: Date.now() });
@@ -68,7 +73,16 @@ rep('''function menuIcon(command) {''', '''function menuIcon(command, args) {
 rep('''.child(svg(menuIcon(it[1]))''', '''.child(svg(menuIcon(it[1], it[2]))''')
 rep('''    else run(it[1], it[2]);''', '''    else if (it[1].startsWith("propeller.")) propellerRun(it[1], it[2]);
     else run(it[1], it[2]);''')
-rep('''    case "tab":''', '''    case "propeller":
+rep('''    case "tab":''', '''    case "close": {
+      // Cmd+W on an orchestrator (propeller-agents.close): its worker tabs too, or not.
+      const n = (tg.workers ?? []).length;
+      return [
+        [`Закрити з підлеглими (${n})`, "propeller.closeWith", { id: tg.id, workers: tg.workers }],
+        ["Лише цю вкладку", "tab.close", { id: tg.id, confirmed: true }],
+        ["Скасувати", "propeller.cancel", {}],
+      ];
+    }
+    case "propeller":
       return [
         ...(shared("propeller.update") ? [["Оновити herdr-propeller", "propeller.update", {}]] : []),
         ["Кольори…", "propeller.colors", {}],
@@ -76,6 +90,8 @@ rep('''    case "tab":''', '''    case "propeller":
       ];
     case "tab":''')
 rep('''  if (command === "propeller.sleep") return''', '''  if (command === "propeller.free") return "mods/propeller-art/moon.svg";
+  if (command === "propeller.closeWith") return "mods/workspace-chrome/x.svg";
+  if (command === "propeller.cancel") return "mods/propeller-art/chevron-right.svg";
   if (command === "propeller.refresh" || command === "propeller.refreshTab") return "mods/propeller-art/sparkles.svg";
   if (command === "propeller.colors") return "mods/propeller-art/palette.svg";
   if (command === "propeller.update") return "mods/propeller-art/arrow-down-to-line.svg";
@@ -84,7 +100,7 @@ rep('''  if (command === "propeller.sleep") return''', '''  if (command === "pro
 rep('''        ["Rename", "tab.rename", { id: tg.id }],''', '''        ["Оновити назву", "propeller.refreshTab", { id: tg.id }],
         ["Rename", "tab.rename", { id: tg.id }],''')
 # cmd-t opens a plain tab, not our Claude ones: no shortcut hint on them.
-rep('''child(shortcut(it[1], it[2]))''', '''child(it[2]?.argv ? "" : shortcut(it[1], it[2]))''')
+rep('''child(shortcut(it[1], it[2]))''', '''child(it[1] === "propeller.cancel" ? "esc" : it[2]?.argv || it[2]?.confirmed ? "" : shortcut(it[1], it[2]))''')
 # A new space starts with Claude, like cmd-n and the sidebar's +.
 rep('''["New space", "space.new", {}],''', '''["New space", "propeller-agents.new", {}],''')
 (dst / "main.js").write_text(s)
