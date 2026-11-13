@@ -69,4 +69,10 @@ swap('''.child(div().max_w(200).truncate()''', '''.when(bosses.has(c.id), el => 
 # 5. Right-click a tab: our menu (patches/propeller-menu.py), with «Оновити назву» on top.
 swap('''openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab",''', '''openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, props: { tab: "tab",''')
 
+# 6. Scrolling over the bar only scrolls it. Upstream switched tabs on every wheel event with any
+#    vertical delta, so a two-finger horizontal swipe on a trackpad (a few px of y in each of its
+#    dozens of events) flipped through the tabs while scrolling. Cmd+Opt+←/→ switches tabs.
+s = re.sub(r'\n *\.on_scroll_wheel\(e => \{[^\n]*run\(e\.delta\.y > 0 \? "tab\.prev" : "tab\.next"\);? \}\)', '', s, count=1)
+if 'run(e.delta.y > 0 ? "tab.prev"' in s: sys.exit("islands-tabs patch: upstream changed the wheel handler")
+
 open(path, "w").write(s)
