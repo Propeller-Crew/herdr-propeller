@@ -31,6 +31,10 @@ workspace app. Built as Herdr mods and config, not a fork, so Herdr's updates ke
 - **Spaces and tabs name themselves.** A space or tab nobody named takes its Claude's title
   for the conversation and follows the topic; rename it yourself and the name stays yours.
   Right-click a space for «Оновити іконку й назву», a tab for «Оновити назву».
+- **Перрі, a space's orchestrator.** Right-click a space for «Покликати Перрі»: a new tab whose
+  Claude reads the space's tabs, sums them up and opens worker tabs for separate tasks
+  (`skills/herdr-tabs/perry.md`). An orchestrator tab (labelled `propeller.role=orchestrator`,
+  or one that worker tabs name as `propeller.parent`) shows Perry in the sidebar and the tab bar.
 
 The interface is in Ukrainian.
 

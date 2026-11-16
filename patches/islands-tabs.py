@@ -20,7 +20,9 @@ def swap(old, new):
 import re
 m = re.search(r'import \{([^}]*)\} from "herdr";', s)
 if not m: sys.exit("islands-tabs patch: upstream changed, no herdr import")
-if "focused" not in m.group(1): s = s[:m.start()] + 'import {' + m.group(1).rstrip() + ', focused } from "herdr";' + s[m.end():]
+for name in ("focused", "terminals"):
+    m = re.search(r'import \{([^}]*)\} from "herdr";', s)
+    if name not in m.group(1): s = s[:m.start()] + 'import {' + m.group(1).rstrip() + f', {name} }} from "herdr";' + s[m.end():]
 
 swap('''      .child(h_flex().id("tab-actions").flex_none().h_full().px(10).gap(2).items_center().rounded(14).bg(islandFill(t.chrome)).border(1).border_color(t.border)
         .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))''',
@@ -50,6 +52,19 @@ swap('''        .border(1).border_color(t.border).bg(islandFill(t.surface)).text
 swap('''        .when(Boolean(program?.icon), el =>''', '''        .when(Boolean(program?.icon) && !program?.agent, el =>''')
 swap('''program.tint ? svg(program.icon).size(14).text_color(c.active ? t.ansi3 : t.muted)''', '''program.tint ? svg(program.icon).size(14).text_color(c.active ? t.foreground : t.muted)''')
 swap('''.child(div().max_w(170).truncate()''', '''.child(div().max_w(200).truncate()''')
+
+# 6. An orchestrator tab (Перрі) shows Perry before its name: same rule as propeller-agents' bossTabs.
+swap('''    const item = (c, i) => {''', '''    const tabOf = new Map(panes().filter(p => p.terminal).map(p => [p.terminal, p.tab]));
+    const bosses = new Set();
+    for (const x of terminals()) {
+      if (x.state !== "live") continue;
+      const own = tabOf.get(x.address), boss = tabOf.get(x.labels?.["propeller.parent"]);
+      if (own && x.labels?.["propeller.role"] === "orchestrator") bosses.add(own);
+      if (boss && boss !== own) bosses.add(boss);
+    }
+    const item = (c, i) => {''')
+swap('''.child(div().max_w(200).truncate()''', '''.when(bosses.has(c.id), el => el.child(image("mods/propeller-art/perry.png").size(16).flex_none()))
+        .child(div().max_w(200).truncate()''')
 
 # 5. Right-click a tab: our menu (patches/propeller-menu.py), with «Оновити назву» on top.
 swap('''openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab",''', '''openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, props: { tab: "tab",''')

@@ -25,6 +25,15 @@ const SLEEP = "propeller-sleep";
 const localId = (s) => (s.machine ? s.id.slice(s.machine.length + 1) : s.id);
 const under = (f, dir) => f === dir || (f ?? "").startsWith(dir + "/");
 const profileOf = (s) => (shared("propeller.profile") ?? {})[s.id] ?? ((shared("propeller.config")?.personalFolders ?? []).some((d) => under(s.folder, d)) ? "personal" : "work");
+// The space already has an orchestrator (Перрі): a terminal in it labelled propeller.role, or named as a worker's propeller.parent.
+const hasBoss = (s) => {
+  const tabs = new Set(s.tabs.map((t) => t.id));
+  const mine = new Set(panes().filter((p) => p.terminal && tabs.has(p.tab)).map((p) => p.terminal));
+  return terminals().some((t) => t.state === "live" && mine.has(t.address) && t.labels?.["propeller.role"] === "orchestrator")
+    || terminals().some((t) => t.state === "live" && mine.has(t.labels?.["propeller.parent"]));
+};
+// Перрі's tab labels its own terminal before Claude starts, so the sidebar and the tab bar show him at once.
+const PERRY = '"$HOME"/.local/bin/hc label "$HC_TERMINAL_ID" propeller.role=orchestrator >/dev/null; claude "$(cat ~/.claude/skills/herdr-tabs/perry.md)"; exec zsh -i';
 const asleep = (s) => (shared("space-folders") ?? {})[s.machine ?? ""]?.of?.[localId(s)] === SLEEP;
 function propellerItems(id) {
   const s = spaces().find((x) => x.id === id);
@@ -34,6 +43,7 @@ function propellerItems(id) {
     [to === "work" ? "Перенести в Робоче" : "Перенести в Особисте", "propeller.profile", { id, to }],
     asleep(s) ? ["Розбудити", "propeller.sleep", { id, on: false }] : ["Приспати", "propeller.sleep", { id, on: true }],
     ["Оновити іконку й назву", "propeller.refresh", { id }],
+    ...(hasBoss(s) ? [] : [["Покликати Перрі", "propeller.perry", { id }]]),
   ];
 }
 const placeOf = (id) => { const s = spaces().find((x) => x.id === id); return s ? place(s) : undefined; };
@@ -49,6 +59,7 @@ function propellerRun(command, args) {
   if (command === "propeller.cancel") return;
   const s = spaces().find((x) => x.id === args.id);
   if (!s) return;
+  if (command === "propeller.perry") run("tab.new", { space: s.id, name: "Перрі", folder: placeOf(s.id), argv: ["/bin/zsh", "-ic", PERRY] });
   if (command === "propeller.refresh") setShared("propeller.refresh", { id: s.id, at: Date.now() });
   if (command === "propeller.profile") setShared("propeller.profile", { ...(shared("propeller.profile") ?? {}), [s.id]: args.to });
   if (command === "propeller.sleep") {
@@ -90,6 +101,7 @@ rep('''    case "tab":''', '''    case "close": {
       ];
     case "tab":''')
 rep('''  if (command === "propeller.sleep") return''', '''  if (command === "propeller.free") return "mods/propeller-art/moon.svg";
+  if (command === "propeller.perry") return "icons/claude.svg";
   if (command === "propeller.closeWith") return "mods/workspace-chrome/x.svg";
   if (command === "propeller.cancel") return "mods/propeller-art/chevron-right.svg";
   if (command === "propeller.refresh" || command === "propeller.refreshTab") return "mods/propeller-art/sparkles.svg";

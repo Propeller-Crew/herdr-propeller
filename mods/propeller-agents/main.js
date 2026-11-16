@@ -68,6 +68,21 @@ const find = (n, id) => n?.id === id ? n : (n?.children ?? []).reduce((r, c) => 
 const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 const localId = (s) => (s.machine ? s.id.slice(s.machine.length + 1) : s.id);
 
+// Orchestrator tabs (Перрі): a terminal labelled propeller.role=orchestrator (the space menu's
+// «Покликати Перрі»), or one that other tabs' terminals name as their propeller.parent (herdr-tabs).
+function bossTabs() {
+  const tabOf = new Map(panes().filter((p) => p.terminal).map((p) => [p.terminal, p.tab]));
+  const out = new Set();
+  for (const t of terminals()) {
+    if (t.state !== "live") continue;
+    const own = tabOf.get(t.address);
+    if (own && t.labels?.["propeller.role"] === "orchestrator") out.add(own);
+    const boss = tabOf.get(t.labels?.["propeller.parent"]);
+    if (boss && boss !== own) out.add(boss);
+  }
+  return out;
+}
+
 function ago(ms) {
   if (!ms) return "";
   const s = Math.max(0, (Date.now() - ms) / 1000);
@@ -337,7 +352,7 @@ export default class PropellerAgents extends View {
       .on_mouse_move((_e, cx) => { if (this.dragging && this.dragging !== s.id && !this.moved) { this.moved = true; cx.notify(); } })
       .on_mouse_up("left", () => { if (this.dragging === s.id && !this.moved) run("space.select", { id: s.id }); })
       // Herdr's space menu with our items (patches/propeller-menu.py): move to the other profile, sleep.
-      .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 300, props: { tab: "space", target: { id: s.id } } }))
+      .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 340, props: { tab: "space", target: { id: s.id } } }))
       .child(badge(s, t))
       .child(div().flex_1().min_w(0).truncate().text_size(13)
         .when(st.kind === "unread", (el) => el.font_semibold())
@@ -373,12 +388,13 @@ export default class PropellerAgents extends View {
   tabRow(s, tab, all, t) {
     const st = tabState(tab);
     const on = s.active && tab.active;
+    const boss = this.bosses?.has(tab.id);
     return h_flex().id(`t-${tab.id}`).h(24).flex_none().pl(26).pr(8).gap(8).items_center().rounded(6)
       .when(on, (el) => el.bg(t.hover))
       .when(!on, (el) => el.hover((x) => x.bg(t.hover)))
       .on_click(() => { run("space.select", { id: s.id }); run("tab.select", { id: tab.id }); })
       .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 150, props: { tab: "tab", target: { id: tab.id, space: s.id } } }))
-      .child(div().w(1).h(14).flex_none().bg(t.border))
+      .child(boss ? image(`${ART}/perry.png`).size(16).flex_none().ml(-8) : div().w(1).h(14).flex_none().bg(t.border))
       .child(div().flex_1().min_w(0).truncate().text_size(12)
         .when(st.kind === "unread", (el) => el.font_semibold())
         .text_color(on ? t.foreground : t.muted).child(tabTitle(tab, all)))
@@ -439,6 +455,7 @@ export default class PropellerAgents extends View {
     if (narrow()) return this.rail(groups, t);
 
     const all = panes();
+    this.bosses = bossTabs();
     // Each profile is a page; the pages lie side by side and slide like the iPhone's home
     // screens: during a swipe they follow the fingers, then spring to the chosen one.
     const W = this.w ?? (shared("sidebar.width") ?? 268);
