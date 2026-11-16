@@ -383,7 +383,8 @@ ${JSON.stringify(todo, null, 1)}`.replaceAll("/<id>.", only ? `/<id>-${Date.now(
       } catch { continue; }
       const fg = g.foreground;
       const prev = this.state.claude[addr];
-      if (fg && /claude/i.test(fg.name ?? "")) {
+      // By argv too: Claude Code's process title is its version ("2.1.325"), not "claude" (16.11).
+      if (fg && [fg.name, (fg.argv ?? [])[0]?.split("/").pop()].some((n) => /claude/i.test(n ?? ""))) {
         const machine = machineOf(addr);
         const path = machine ? `.claude/sessions/${fg.pid}.json` : `${home()}/.claude/sessions/${fg.pid}.json`;
         try {
