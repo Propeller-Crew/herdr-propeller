@@ -20,7 +20,9 @@ another name, and even for a big job:
     herdr-app do tab.new "{\"space\": \"$S\", \"name\": \"...\", \"folder\": \"...\", \"argv\": [...]}"
 
 (`here.py` finds this Claude's own terminal; not `herdr-app status`, which is whatever space
-is in front.) If the user names another space («у воркспейсі АпМап»), find it in
+is in front.) Always pass the space, also with flags (`--space "$S" --name … --task …`):
+without it Herdr opens the tab in the space the user is looking at. `tab-guard.py` (a hook
+from `install.sh`) stops such a call. If the user names another space («у воркспейсі АпМап»), find it in
 `herdr-app ls` by name and open the tab there. Only when they ask for a new space (a new
 project of its own: «новий воркспейс», «окремий простір») use
 `herdr-app do space.new '{"name": "...", "folder": "...", "argv": [...]}'`.

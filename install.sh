@@ -18,6 +18,16 @@ done
 "$HERE/sync-mods.sh"
 # Claude Code skill: tasks into new Herdr tabs and spaces.
 mkdir -p ~/.claude/skills && ln -sfn "$HERE/skills/herdr-tabs" ~/.claude/skills/herdr-tabs
+# A hook that stops tab.new without a space: Herdr would open it in the space in front, not the caller's.
+python3 - ~/.claude/settings.json <<'PY'
+import json, os, sys
+p = sys.argv[1]; d = json.load(open(p)) if os.path.exists(p) else {}
+cmd = "python3 ~/.claude/skills/herdr-tabs/tab-guard.py"
+pre = d.setdefault("hooks", {}).setdefault("PreToolUse", [])
+if not any(h.get("command") == cmd for e in pre for h in e.get("hooks", [])):
+    pre.append({"matcher": "Bash", "hooks": [{"type": "command", "command": cmd, "timeout": 5}]})
+    json.dump(d, open(p, "w"), indent=2, ensure_ascii=False)
+PY
 # Our keys (alt-up/down through the agents list) merged into the person's own keys.json.
 python3 - "$HERE/keys.json" "$APP/keys.json" <<'PY'
 import json, os, sys
