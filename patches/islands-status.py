@@ -10,7 +10,7 @@ def rep(a, b):
         sys.exit(f"islands-workspace-status patch did not apply, upstream changed: {a[:60]}")
     s = s.replace(a, b)
 rep('import { spaces, agents, theme, shared } from "herdr";',
-    'import { spaces, agents, panes, theme, shared, home, exec } from "herdr";')
+    'import { spaces, agents, panes, theme, shared, home, exec, appHome, openOverlay, nextCommand, checking } from "herdr";')
 rep('''    const label = (icon, text, color) =>''', '''    const tabs = new Set((space?.tabs ?? []).map((c) => c.id));
     const cwd = panes().find((p) => p.focused && tabs.has(p.tab))?.cwd ?? panes().find((p) => tabs.has(p.tab) && p.cwd)?.cwd;
     const h = home(), where = !cwd ? "" : cwd === h ? "~" : cwd.startsWith(h + "/") ? "~" + cwd.slice(h.length) : cwd;
@@ -43,6 +43,19 @@ export default class WorkspaceStatus extends View {
     cx.timer.every(60000, (cx) => machinesNow().forEach(m => ask(cx, m)));
     // A server space opened or switched to: its number within seconds, not at the next minute.
     cx.timer.every(3000, (cx) => machinesNow().forEach(m => { if (!this.free.has(m)) ask(cx, m); }));
+    // The «Диск» panel (propeller-disk, from ~/code/disk-track on Artem's Mac): the click on the free
+    // space opens it when it's installed, else Storage settings. `islands-workspace-status.disk` too.
+    this.diskPanel = false;
+    if (checking()) return;
+    cx.spawn(async (cx) => {
+      this.diskPanel = (await exec("/bin/test", ["-e", `${appHome()}/mods/propeller-disk/main.js`]).catch(() => null))?.code === 0;
+      for (;;) { if ((await nextCommand()) === "disk") this.openDisk(); }
+    });
+  }
+
+  openDisk() {
+    if (this.diskPanel) openOverlay({ mod: "propeller-disk", kind: "window", key: "propeller-disk", width: 460, height: 680 });
+    else exec("open", ["x-apple.systempreferences:com.apple.settings.Storage"]).catch(() => null);
   }
 
   render() {''')
@@ -53,7 +66,7 @@ rep('''        .when(needs > 0, el => el.child(div().text_color(t.blocked).child
         const text = `${gb < 10 ? gb.toFixed(1).replace(".", ",") : Math.round(gb)} ГБ вільно`;
         return el.child(h_flex().id("status-disk").gap(6).items_center().text_color(gb < 20 ? color : t.muted)
           .hover(s => s.text_color(t.foreground))
-          .on_click(() => { if (!space?.machine) exec("open", ["x-apple.systempreferences:com.apple.settings.Storage"]).catch(() => null); })
+          .on_click(() => { if (!space?.machine) this.openDisk(); })
           .child(svg("mods/propeller-art/hard-drive.svg").size(13).text_color(color)).child(text));
       });''')
 open(path, "w").write(s)
