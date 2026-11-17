@@ -93,7 +93,15 @@ function ago(ms) {
 }
 
 // Same badge as the Spaces list: the picked icon, else the first letter on the space's colour.
+// A space on another machine (the server) wears a small server chip on the corner, the same as
+// in space-folders, so it reads at a glance (Artem, 17.11).
 function badge(w, t, size = 18) {
+  if (!w.machine) return face(w, t, size);
+  return div().relative().size(size).flex_none().child(face(w, t, size))
+    .child(h_flex().absolute().right(-4).bottom(-4).size(12).rounded(6).bg(t.chrome).items_center().justify_center()
+      .child(svg("mods/workspace-chrome/server.svg").size(9).text_color(t.working)));
+}
+function face(w, t, size) {
   const ic = (shared("space.icons") ?? {})[w.id];
   const c = (shared("space.colors") ?? {})[w.id] ?? "ansi6";
   const fill = c.startsWith("#") ? c : (MARK[c] ?? t[c]);

@@ -15,7 +15,16 @@ def rep(a, b):
 
 rep('import { View, div, svg } from "gpui-kit";', 'import { View, div, svg, image } from "gpui-kit";')
 rep('const MARK = {', '''// A space's badge: its picked icon, else the first letter of its name on its color.
+// A space on another machine (the server) wears a small server chip on the badge's corner, so
+// it reads at a glance in the list and the folded rail alike (Artem, 17.11).
 function badge(w, fill) {
+  if (!w.machine) return face(w, fill);
+  const t = theme();
+  return div().relative().size(18).flex_none().child(face(w, fill))
+    .child(h_flex().absolute().right(-4).bottom(-4).size(12).rounded(6).bg(t.chrome).items_center().justify_center()
+      .child(svg("mods/workspace-chrome/server.svg").size(9).text_color(t.working)));
+}
+function face(w, fill) {
   const ic = (shared("space.icons") ?? {})[w.id];
   if (ic?.image) return image(ic.image).size(18).flex_none().rounded(5);
   if (ic?.glyph) return h_flex().size(18).flex_none().rounded(5).bg(ic.color ?? fill).items_center().justify_center().child(svg(ic.glyph).size(12).text_color("#ffffff"));
