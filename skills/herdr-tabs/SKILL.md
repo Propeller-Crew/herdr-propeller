@@ -27,6 +27,10 @@ from `install.sh`) stops such a call. If the user names another space («у во
 project of its own: «новий воркспейс», «окремий простір») use
 `herdr-app do space.new '{"name": "...", "folder": "...", "argv": [...]}'`.
 
+A new space on another machine (`"machine": "propeller"`) that carries on the work of this space:
+`python3 ~/.claude/skills/herdr-tabs/nest.py <its id>` right after, so the sidebar shows its tabs
+under this space with a server chip instead of a project of its own (`--off <id>` undoes it).
+
 Both print JSON with `terminal` (e.g. `t42`); keep it. Name the tab after the task, short. The
 folder is the project's (the vault's MAP.md → «Код», or `~/code/<name>`).
 

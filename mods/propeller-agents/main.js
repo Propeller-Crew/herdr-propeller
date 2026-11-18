@@ -40,6 +40,12 @@ const under = (f, dir) => f === dir || (f ?? "").startsWith(dir + "/");
 const profileOf = (s) => (shared("propeller.profile") ?? {})[s.id] ?? ((config().personalFolders ?? []).some((d) => under(s.folder, d)) ? "personal" : "work");
 const folderOf = (pid) => (pid === "personal" ? config().personalFolders?.[0] : config().workFolder) ?? home();
 const SLEEPING_PREVIEW = 12;
+// A space on the server that belongs to a space here: {server space id: space id here}. It shows
+// as tabs with a server chip under that space instead of a row of its own (Artem, 18.11: the
+// server half of a project read as a separate project). Written by dropping the server space's row
+// onto a space here, or by skills/herdr-tabs/nest.py when a Claude moves its work to the server.
+// Dropping its tab on a group's pill puts it back on its own.
+const nestPath = () => `${home()}/.config/herdr-app/data/propeller-nest.json`;
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 const DOTS = ["●∙∙", "∙●∙", "∙∙●"];
 // How a working row shows it works (right-click a group's pill to pick). All run natively in
@@ -165,8 +171,12 @@ export default class PropellerAgents extends View {
         cx.notify();
       }
     });
+    this.nest = {};
+    this.nestText = null;
+    cx.spawn(async (cx) => { await this.loadNest(); cx.notify(); });
     // Times ("21m") move on: once every 30 s is enough. The dots animate natively.
-    cx.timer.every(30000, (cx) => cx.notify());
+    // The nest file too (nest.py writes it from outside).
+    cx.timer.every(30000, (cx) => { cx.notify(); cx.spawn(async (cx) => { await this.loadNest(); cx.notify(); }); });
   }
 
   // Cmd+W. A tab whose Claude opened worker tabs (herdr-tabs labels them propeller.parent, or
@@ -282,9 +292,31 @@ export default class PropellerAgents extends View {
   drop(target) {
     const s = spaces().find((x) => x.id === this.dragging);
     if (!s) return;
+    if (this.nest[s.id]) { const { [s.id]: _, ...rest } = this.nest; this.nest = rest; this.saveNest(); }
     if (target === "inactive") this.setAsleep(s, true);
     else if (SECTIONS.some((x) => x.id === target)) this.setAsleep(s, false);
     else if (PROFILES.some((p) => p.id === target)) setShared("propeller.profile", { ...(shared("propeller.profile") ?? {}), [s.id]: target });
+  }
+
+  async loadNest() {
+    let text = "{}";
+    try { text = await fs.readFile(nestPath(), "utf8"); } catch {}
+    if (text === this.nestText) return;
+    this.nestText = text;
+    try { this.nest = JSON.parse(text) ?? {}; } catch { this.nest = {}; }
+  }
+
+  saveNest() {
+    this.nestText = JSON.stringify(this.nest);
+    fs.writeFile(nestPath(), this.nestText).catch(() => null);
+  }
+
+  // A server space dropped onto a space here goes under it; anything else dropped on a space does nothing.
+  nestUnder(childId, parent) {
+    const child = spaces().find((x) => x.id === childId);
+    if (!child?.machine || parent.machine || this.nest[child.id] === parent.id) return;
+    this.nest = { ...this.nest, [child.id]: parent.id };
+    this.saveNest();
   }
 
   // Into "Сплять" or out of it: the propeller mod sees the move and settles or wakes the space.
@@ -357,8 +389,16 @@ export default class PropellerAgents extends View {
       .when(st.kind === "unread" && !on, (el) => el.bg("#4C9EEB24"))
       .when(this.dragging === s.id && this.moved, (el) => el.opacity(0.5))
       .on_mouse_down("left", () => { this.dragging = s.id; this.moved = false; this.over = null; })
-      .on_mouse_move((_e, cx) => { if (this.dragging && this.dragging !== s.id && !this.moved) { this.moved = true; cx.notify(); } })
-      .on_mouse_up("left", () => { if (this.dragging === s.id && !this.moved) run("space.select", { id: s.id }); })
+      .on_mouse_move((_e, cx) => {
+        if (this.dragging && this.dragging !== s.id && !this.moved) { this.moved = true; cx.notify(); }
+        if (this.dragging && this.dragging !== s.id && this.over !== `s:${s.id}`) { this.over = `s:${s.id}`; cx.notify(); }
+      })
+      .on_mouse_up("left", () => {
+        if (this.dragging === s.id && !this.moved) run("space.select", { id: s.id });
+        else if (this.dragging && this.dragging !== s.id && this.moved) this.nestUnder(this.dragging, s);
+      })
+      .when(Boolean(!s.machine && this.dragging && this.moved && this.over === `s:${s.id}` && spaces().find((x) => x.id === this.dragging)?.machine),
+        (el) => el.border(1).border_color(t.accent))
       // Herdr's space menu with our items (patches/propeller-menu.py): move to the other profile, sleep.
       .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 340, props: { tab: "space", target: { id: s.id } } }))
       .child(badge(s, t))
@@ -393,16 +433,26 @@ export default class PropellerAgents extends View {
         busy ? svg("mods/workspace-chrome/spinner.svg").size(13).spin(900) : null));
   }
 
-  tabRow(s, tab, all, t) {
+  // remote: the tab is in a server space nested under the row above (this.nest); it wears the
+  // server chip, and dragging it to a group's pill takes the server space out again.
+  tabRow(s, tab, all, t, remote = false) {
     const st = tabState(tab);
     const on = s.active && tab.active;
     const boss = this.bosses?.has(tab.id);
-    return h_flex().id(`t-${tab.id}`).h(24).flex_none().pl(26).pr(8).gap(8).items_center().rounded(6)
+    const go = () => { run("space.select", { id: s.id }); run("tab.select", { id: tab.id }); };
+    const row = h_flex().id(`t-${tab.id}`).h(24).flex_none().pl(26).pr(8).gap(8).items_center().rounded(6)
       .when(on, (el) => el.bg(t.hover))
-      .when(!on, (el) => el.hover((x) => x.bg(t.hover)))
-      .on_click(() => { run("space.select", { id: s.id }); run("tab.select", { id: tab.id }); })
+      .when(!on, (el) => el.hover((x) => x.bg(t.hover)));
+    const lead = remote
+      ? svg("mods/workspace-chrome/server.svg").size(12).flex_none().ml(-6).text_color(t.working)
+      : boss ? image(`${ART}/perry.png`).size(16).flex_none().ml(-8) : div().w(1).h(14).flex_none().bg(t.border);
+    return (remote
+      ? row.when(this.dragging === s.id && this.moved, (el) => el.opacity(0.5))
+        .on_mouse_down("left", () => { this.dragging = s.id; this.moved = false; this.over = null; })
+        .on_mouse_up("left", () => { if (this.dragging === s.id && !this.moved) go(); })
+      : row.on_click(go))
       .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 150, props: { tab: "tab", target: { id: tab.id, space: s.id } } }))
-      .child(boss ? image(`${ART}/perry.png`).size(16).flex_none().ml(-8) : div().w(1).h(14).flex_none().bg(t.border))
+      .child(lead)
       .child(div().flex_1().min_w(0).truncate().text_size(12)
         .when(st.kind === "unread", (el) => el.font_semibold())
         .text_color(on ? t.foreground : t.muted).child(tabTitle(tab, all)))
@@ -453,8 +503,22 @@ export default class PropellerAgents extends View {
       if (profileOf(active) !== this.profile) this.setProfile(profileOf(active));
     }
     const everywhere = Object.fromEntries(SECTIONS.map((x) => [x.id, []]));
+    const ids = new Set(spaces().map((s) => s.id));
+    this.kids = new Map();
     for (const s of spaces()) {
-      const st = this.state(s, seen, asleep);
+      const p = this.nest[s.id];
+      if (!s.machine || !p || !ids.has(p)) continue;
+      if (!this.kids.has(p)) this.kids.set(p, []);
+      this.kids.get(p).push(s);
+    }
+    for (const s of spaces()) {
+      if (s.machine && ids.has(this.nest[s.id])) continue; // drawn under its space here
+      const kids = this.kids.get(s.id) ?? [];
+      // The space and its server half are one project: the most urgent state of either, the latest activity.
+      const st = kids.length
+        ? this.state({ ...s, tabs: [...s.tabs, ...kids.flatMap((k) => k.tabs)] },
+          { ...seen, [s.id]: Math.max(seen[s.id] ?? 0, ...kids.map((k) => seen[k.id] ?? 0)) || undefined }, asleep)
+        : this.state(s, seen, asleep);
       everywhere[st.kind].push({ s, st });
       byProfile[profileOf(s)][st.kind].push({ s, st });
     }
@@ -497,8 +561,11 @@ export default class PropellerAgents extends View {
       for (const { s, st } of capped ? list.slice(0, SLEEPING_PREVIEW) : list) {
         rows.push(this.spaceRow(s, st, t));
         order.push(s.id);
-        if (sec.id !== "inactive" && s.tabs.length > 1) for (const tab of s.tabs) { rows.push(this.tabRow(s, tab, all, t)); flat.push([s.id, tab.id]); }
-        else flat.push([s.id, null]);
+        const kids = this.kids?.get(s.id) ?? [];
+        if (sec.id !== "inactive" && (s.tabs.length > 1 || kids.length)) {
+          for (const tab of s.tabs) { rows.push(this.tabRow(s, tab, all, t)); flat.push([s.id, tab.id]); }
+          for (const k of kids) for (const tab of k.tabs) { rows.push(this.tabRow(k, tab, all, t, true)); flat.push([k.id, tab.id]); }
+        } else flat.push([s.id, null]);
       }
       if (capped) rows.push(div().id("more").h(24).flex_none().px(10).flex().items_center().text_size(12).text_color(t.dim)
         .rounded(6).hover((x) => x.bg(t.hover).text_color(t.foreground))
