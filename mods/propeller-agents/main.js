@@ -83,7 +83,9 @@ function bossTabs() {
     if (t.state !== "live") continue;
     const own = tabOf.get(t.address);
     if (own && t.labels?.["propeller.role"] === "orchestrator") out.add(own);
-    const boss = tabOf.get(t.labels?.["propeller.parent"]);
+    const p = t.labels?.["propeller.parent"];
+    const m = t.address.includes("/") ? t.address.split("/")[0] : null;
+    const boss = tabOf.get(p && m && !p.includes("/") ? `${m}/${p}` : p);
     if (boss && boss !== own) out.add(boss);
   }
   return out;
@@ -440,18 +442,39 @@ export default class PropellerAgents extends View {
     const on = s.active && tab.active;
     const boss = this.bosses?.has(tab.id);
     const go = () => { run("space.select", { id: s.id }); run("tab.select", { id: tab.id }); };
-    const row = h_flex().id(`t-${tab.id}`).h(24).flex_none().pl(26).pr(8).gap(8).items_center().rounded(6)
+    const server = svg("mods/workspace-chrome/server.svg");
+    // Перрі on any tab, a server one too (its server chip then sits on his corner).
+    const lead = boss
+      ? (remote
+        ? div().relative().size(16).flex_none().ml(-8).child(image(`${ART}/perry.png`).size(16))
+          .child(h_flex().absolute().right(-4).bottom(-3).size(10).rounded(5).bg(t.chrome).items_center().justify_center()
+            .child(server.size(8).text_color(t.working)))
+        : image(`${ART}/perry.png`).size(16).flex_none().ml(-8))
+      : remote ? server.size(12).flex_none().ml(-6).text_color(t.working) : div().w(1).h(14).flex_none().bg(t.border);
+    // Pressed and released here: go there. Dragged onto another tab of its space: moved to its place
+    // (tab.move). A server tab dragged to a group's pill takes its server space out again (drop()).
+    const over = Boolean(this.draggingTab && this.moved && this.draggingTab.id !== tab.id && this.draggingTab.space === s.id && this.over === `t:${tab.id}`);
+    return h_flex().id(`t-${tab.id}`).h(24).flex_none().pl(26).pr(8).gap(8).items_center().rounded(6)
       .when(on, (el) => el.bg(t.hover))
-      .when(!on, (el) => el.hover((x) => x.bg(t.hover)));
-    const lead = remote
-      ? svg("mods/workspace-chrome/server.svg").size(12).flex_none().ml(-6).text_color(t.working)
-      : boss ? image(`${ART}/perry.png`).size(16).flex_none().ml(-8) : div().w(1).h(14).flex_none().bg(t.border);
-    return (remote
-      ? row.when(this.dragging === s.id && this.moved, (el) => el.opacity(0.5))
-        .on_mouse_down("left", () => { this.dragging = s.id; this.moved = false; this.over = null; })
-        .on_mouse_up("left", () => { if (this.dragging === s.id && !this.moved) go(); })
-      : row.on_click(go))
-      .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 150, props: { tab: "tab", target: { id: tab.id, space: s.id } } }))
+      .when(!on, (el) => el.hover((x) => x.bg(t.hover)))
+      .when(over, (el) => el.border(1).border_color(t.accent))
+      .when(this.draggingTab?.id === tab.id && this.moved, (el) => el.opacity(0.5))
+      .on_mouse_down("left", () => {
+        this.draggingTab = { id: tab.id, space: s.id };
+        if (remote) this.dragging = s.id;
+        this.moved = false; this.over = null;
+      })
+      .on_mouse_move((_e, cx) => {
+        if (this.draggingTab && this.draggingTab.id !== tab.id && !this.moved) { this.moved = true; cx.notify(); }
+        if (this.draggingTab && this.over !== `t:${tab.id}`) { this.over = `t:${tab.id}`; cx.notify(); }
+      })
+      .on_mouse_up("left", () => {
+        const d = this.draggingTab;
+        if (d?.id === tab.id && !this.moved) go();
+        else if (d && this.moved && d.space === s.id && d.id !== tab.id) run("tab.move", { id: d.id, index: tab.index });
+        if (d && this.moved && d.space === s.id) this.dragging = null; // a reorder, not a drop on a pill
+      })
+      .on_mouse_down("right", () => openOverlay({ mod: "propeller-menu", kind: "popup", width: 220, height: 180, props: { tab: "tab", target: { id: tab.id, space: s.id } } }))
       .child(lead)
       .child(div().flex_1().min_w(0).truncate().text_size(12)
         .when(st.kind === "unread", (el) => el.font_semibold())
@@ -543,8 +566,10 @@ export default class PropellerAgents extends View {
       .on_mouse_down("left", () => { if (!this.dragging) this.moved = false; })
       .on_scroll_wheel((e, cx) => this.swiped(e, cx))
       // Any release ends a drag; one that left its row turns on "moved" for the targets above.
-      .on_mouse_move((_e, cx) => { if (this.dragging && !this.moved && this.over) { this.moved = true; cx.notify(); } })
-      .on_mouse_up("left", (_e, cx) => { if (this.dragging) { this.dragging = null; this.moved = false; this.over = null; cx.notify(); } })
+      .on_mouse_move((_e, cx) => { if ((this.dragging || this.draggingTab) && !this.moved && this.over) { this.moved = true; cx.notify(); } })
+      .on_mouse_up("left", (_e, cx) => {
+        if (this.dragging || this.draggingTab) { this.dragging = null; this.draggingTab = null; this.moved = false; this.over = null; cx.notify(); }
+      })
       .child(v_flex().px(6).gap(1).flex_none().child(this.top(everywhere, t)).children(this.picking ? [this.picker(t)] : []))
       .child(div().flex_1().min_h(0).relative().overflow_hidden().children(pages));
   }
@@ -563,8 +588,11 @@ export default class PropellerAgents extends View {
         order.push(s.id);
         const kids = this.kids?.get(s.id) ?? [];
         if (sec.id !== "inactive" && (s.tabs.length > 1 || kids.length)) {
-          for (const tab of s.tabs) { rows.push(this.tabRow(s, tab, all, t)); flat.push([s.id, tab.id]); }
-          for (const k of kids) for (const tab of k.tabs) { rows.push(this.tabRow(k, tab, all, t, true)); flat.push([k.id, tab.id]); }
+          // Перрі on top of the project's tabs, here or on the server; the rest in their spaces' order.
+          const list = [...s.tabs.map((tab) => [s, tab, false]), ...kids.flatMap((k) => k.tabs.map((tab) => [k, tab, true]))];
+          const boss = (x) => (this.bosses?.has(x[1].id) ? 0 : 1);
+          list.sort((a, b) => boss(a) - boss(b));
+          for (const [sp, tab, remote] of list) { rows.push(this.tabRow(sp, tab, all, t, remote)); flat.push([sp.id, tab.id]); }
         } else flat.push([s.id, null]);
       }
       if (capped) rows.push(div().id("more").h(24).flex_none().px(10).flex().items_center().text_size(12).text_color(t.dim)
