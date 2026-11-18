@@ -51,6 +51,16 @@ async function hcWait(args, timeout = 15000) {
   return hcPath ? exec(hcPath, args, { timeout }) : hc(args);
 }
 
+// Typing into a terminal on another machine goes through that machine's own hc. Sent from here,
+// its core takes it for a message from another agent and wraps it in <hc from="…">, so the
+// Claude there read "/exit" as text and never quit: server spaces didn't go to sleep (Artem, 18.11).
+function send(addr, text) {
+  const machine = machineOf(addr);
+  if (!machine) return hcWait(["send", addr, text]);
+  return exec("sh", ["-c", 'h="$HOME/.local/bin/hc"; [ -x "$h" ] || h=hc; exec "$h" send "$1" "$2"', "sh", addr.slice(machine.length + 1), text],
+    { on: machine, timeout: 15000 });
+}
+
 function left(ts) {
   const s = Math.max(0, Math.round(ts - Date.now() / 1000));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
@@ -249,7 +259,7 @@ export default class Propeller extends View {
       const w = this.state.pending[p.terminal];
       delete this.state.pending[p.terminal];
       const cmd = typeof w === "string" ? `claude --resume ${w} --fork-session` : `claude --resume ${w.session}`;
-      hc(["send", p.terminal, `${CLEAN_ENV} ${cmd}`]).catch(() => null);
+      send(p.terminal, `${CLEAN_ENV} ${cmd}`).catch(() => null);
     }
   }
 
@@ -404,7 +414,7 @@ ${JSON.stringify(todo, null, 1)}`.replaceAll("/<id>.", only ? `/<id>-${Date.now(
         // Unset a parent Claude session's markers first (same line as shepherdr's clean-env.js):
         // a core started from inside Claude Code hands them to every terminal, and Claude then
         // stops saving the conversation.
-        await hcWait(["send", addr, `${CLEAN_ENV} claude --resume ${prev.session}`]);
+        await send(addr, `${CLEAN_ENV} claude --resume ${prev.session}`);
         prev.shell = g.pid;
       } else if (prev) {
         // Same shell, Claude gone: the person quit it on purpose.
@@ -603,7 +613,7 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
       if (!c || this.state.pending[p.terminal] || status.get(p.terminal) !== "idle") continue;
       this.state.pending[p.terminal] = { session: c.session };
       delete this.state.claude[p.terminal];
-      hc(["send", p.terminal, "/exit"]).catch(() => null);
+      send(p.terminal, "/exit").catch(() => null);
       n += 1;
     }
     this.freed = { n, at: Date.now() };
@@ -631,7 +641,7 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
       if (!c || this.state.pending[p.terminal] || status.get(p.terminal) !== "idle") continue;
       this.state.pending[p.terminal] = { session: c.session };
       delete this.state.claude[p.terminal];
-      hc(["send", p.terminal, "/exit"]).catch(() => null);
+      send(p.terminal, "/exit").catch(() => null);
     }
   }
 
