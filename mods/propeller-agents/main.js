@@ -270,7 +270,7 @@ export default class PropellerAgents extends View {
     if (pick("needs").length) return { kind: "needs", since: latest(pick("needs")) };
     if (pick("working").length) return { kind: "working", since: Math.min(...pick("working").map((x) => x.since ?? Date.now())) };
     const last = seen[s.id] ?? latest(tabs);
-    if (asleep.has(localId(s))) return { kind: "inactive", since: last };
+    if (asleep.has(`${s.machine ?? ""}|${localId(s)}`)) return { kind: "inactive", since: last };
     if (pick("unread").length) return { kind: "unread", since: latest(pick("unread")) };
     if (!last || Date.now() - last > DAY) return { kind: "inactive", since: last };
     return { kind: "done", since: last };
@@ -531,8 +531,10 @@ export default class PropellerAgents extends View {
     this.closed();
     const t = theme();
     const seen = shared("propeller.seen") ?? {};
-    const of = (shared("space-folders") ?? {})[""]?.of ?? {};
-    const asleep = new Set(Object.entries(of).filter(([, f]) => f === SLEEP).map(([id]) => id));
+    // Each machine keeps its own folders (space-folders: {machine: {of}}), the server's too: a
+    // server space put to sleep stayed in «Готово» while only this Mac's were read (19.11).
+    const asleep = new Set(Object.entries(shared("space-folders") ?? {})
+      .flatMap(([m, d]) => Object.entries(d?.of ?? {}).filter(([, f]) => f === SLEEP).map(([id]) => `${m}|${id}`)));
     const byProfile = Object.fromEntries(PROFILES.map((p) => [p.id, Object.fromEntries(SECTIONS.map((x) => [x.id, []]))]));
     // Opening a space of the other profile (a key, a notification) switches the sidebar to it.
     const active = spaces().find((s) => s.active);
