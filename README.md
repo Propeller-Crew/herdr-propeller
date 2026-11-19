@@ -35,6 +35,11 @@ workspace app. Built as Herdr mods and config, not a fork, so Herdr's updates ke
   Claude reads the space's tabs, sums them up and opens worker tabs for separate tasks
   (`skills/herdr-tabs/perry.md`). An orchestrator tab (labelled `propeller.role=orchestrator`,
   or one that worker tabs name as `propeller.parent`) shows Perry in the sidebar and the tab bar.
+- **A server Claude can ask for the Mac.** The server can't reach the Mac, so a Claude there that
+  needs something only the Mac has runs `mac-ask "Title" < brief.md` (`bin/mac-ask`, copy it to
+  `~/.local/bin` on the server). The request shows in «Чекає на тебе»; a click opens a Mac tab with
+  Claude and the brief (right-click declines), and its answer goes back to the asking terminal.
+  Nothing runs on the Mac without that click.
 
 The interface is in Ukrainian.
 

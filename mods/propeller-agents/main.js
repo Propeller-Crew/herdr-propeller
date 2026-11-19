@@ -411,6 +411,21 @@ export default class PropellerAgents extends View {
       .child(this.mark(st.kind, t));
   }
 
+  // A request from the server: click opens a Mac tab with Claude and its brief; right-click declines.
+  askRow(a, t) {
+    const at = /^(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)/.exec(a.id);
+    const since = at ? Date.UTC(+at[1], at[2] - 1, +at[3], +at[4], +at[5], +at[6]) : null;
+    return h_flex().id(`ask-${a.machine}-${a.id}`).h(30).flex_none().px(8).gap(8).items_center().rounded(8)
+      .bg("#F5A52414").hover((x) => x.bg("#F5A52430"))
+      .on_click(() => setShared("propeller.macAsk.take", { id: a.id, machine: a.machine, at: Date.now() }))
+      .on_mouse_down("right", () => setShared("propeller.macAsk.decline", { id: a.id, machine: a.machine, at: Date.now() }))
+      .child(h_flex().size(18).flex_none().rounded(5).bg("#F5A52433").items_center().justify_center()
+        .child(svg(`${ART}/laptop.svg`).size(12).text_color("#F5A524")))
+      .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(`Мак: ${a.title}`))
+      .child(div().flex_none().text_size(11.5).text_color("#F5A524").child(ago(since)))
+      .child(this.mark("needs", t));
+  }
+
   // Top of the panel: the profile switcher, a new space in this profile's folder, ✨ icons.
   top(groups, t) {
     const urgent = (pid) => ["needs", "unread"].some((k) => groups[k].some(({ s }) => profileOf(s) === pid));
@@ -579,9 +594,12 @@ export default class PropellerAgents extends View {
     const rows = [], order = [], flat = [];
     for (const sec of SECTIONS) {
       const list = groups[sec.id];
-      if (!list.length) continue;
-      rows.push(this.header(sec, list.length, t));
+      // Requests from a Claude on another machine that needs this Mac (bin/mac-ask, the propeller mod).
+      const asks = sec.id === "needs" ? shared("propeller.macAsks") ?? [] : [];
+      if (!list.length && !asks.length) continue;
+      rows.push(this.header(sec, list.length + asks.length, t));
       if (this.folded[sec.id]) continue;
+      for (const a of asks) rows.push(this.askRow(a, t));
       const capped = sec.id === "inactive" && !this.allSleeping && list.length > SLEEPING_PREVIEW;
       for (const { s, st } of capped ? list.slice(0, SLEEPING_PREVIEW) : list) {
         rows.push(this.spaceRow(s, st, t));

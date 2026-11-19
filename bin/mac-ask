@@ -1,0 +1,19 @@
+#!/bin/sh
+# mac-ask "Назва" < бриф.md — для Claude на іншій машині (сервері), якому потрібен Мак Артема.
+# Кладе запит у ~/mac-inbox; Herdr на Маку показує його в «Чекає на тебе», і Артем одним кліком
+# відкриває макову вкладку з Claude і цим брифом. Відповідь приходить у цей термінал повідомленням.
+# Бриф стоїть сам по собі: що зробити, де, навіщо, що повернути. Сам Мак без кліку Артема нічого не запускає.
+set -eu
+[ $# -ge 1 ] || { echo 'usage: mac-ask "Назва" < бриф.md' >&2; exit 2; }
+mkdir -p "$HOME/mac-inbox"
+id=$(date -u +%Y%m%d-%H%M%S)-$$  # UTC: the Mac reads the time from it
+TITLE="$1" ID="$id" python3 -c '
+import json, os, sys
+brief = sys.stdin.read().strip()
+if not brief: sys.exit("бриф порожній: передай його через stdin")
+d = {"id": os.environ["ID"], "title": os.environ["TITLE"], "brief": brief,
+     "terminal": os.environ.get("HC_TERMINAL_ID"), "cwd": os.getcwd()}
+p = os.path.expanduser("~/mac-inbox/" + d["id"] + ".json")
+open(p + ".tmp", "w").write(json.dumps(d, ensure_ascii=False)); os.replace(p + ".tmp", p)
+'
+echo "запит $id у скриньці Мака: Артем побачить його в Herdr. Відповідь прийде сюди повідомленням <hc from=…>."

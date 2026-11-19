@@ -117,6 +117,11 @@ export default class Propeller extends View {
         this.pickAt = pick.at;
         cx.spawn(async () => { await this.paint({ h: pick.h, c: pick.c, l: pick.l ?? 0 }, true); });
       }
+      // A request from another machine's Claude (bin/mac-ask), clicked or declined in the sidebar.
+      for (const [key, fn] of [["propeller.macAsk.take", (a, cx) => this.takeAsk(a, cx)], ["propeller.macAsk.decline", (a) => this.dropAsk(a, "declined")]]) {
+        const a = shared(key);
+        if (a?.at && a.at !== this[key]) { this[key] = a.at; setShared(key, null); cx.spawn(async (cx) => { await fn(a, cx); }); }
+      }
       // "Звільнити RAM" from the card's menu (propeller-menu).
       const free = shared("propeller.free");
       if (free && free !== this.freeAsked) {
@@ -207,6 +212,7 @@ export default class Propeller extends View {
       this.trackActivity();
       await this.nameSpaces();
       await this.sleep();
+      await this.macInbox();
       await this.save();
     } catch (e) {
       console.log("propeller tick:", e?.message ?? e);
@@ -597,6 +603,72 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
     if (next !== all) setShared("space-folders", next);
     this.orderSleeping(next);
     for (const id of Object.keys(this.state.settled)) if (!spaces().some((s) => s.id === id)) delete this.state.settled[id];
+  }
+
+  // --- Mac inbox ------------------------------------------------------------------
+  // A Claude on the server can't reach this Mac. It leaves a request in that machine's ~/mac-inbox
+  // (bin/mac-ask): {id, title, brief, terminal, cwd}. Every 30 s we read them into
+  // shared("propeller.macAsks") (without the brief); the sidebar shows them in «Чекає на тебе».
+  // Nothing runs here until Artem clicks one: then a tab with Claude and the brief opens in the Mac
+  // space the server space sits under (propeller-nest.json), or in a new "<name> · Мак" space that
+  // it then sits under. The answer goes back to the asking terminal with hc send.
+  async macInbox() {
+    if (Date.now() - (this.inboxAt ?? 0) < 30000) return;
+    this.inboxAt = Date.now();
+    const asks = [];
+    for (const m of new Set(spaces().map((s) => s.machine).filter(Boolean))) {
+      const r = await exec("sh", ["-c", 'for f in "$HOME"/mac-inbox/*.json; do [ -f "$f" ] && cat "$f" && echo; done; true'], { on: m, timeout: 8000 }).catch(() => null);
+      if (!r || r.code !== 0) { asks.push(...(this.asks ?? []).filter((a) => a.machine === m)); continue; } // away: keep what we had
+      for (const line of r.stdout.split("\n")) {
+        try { const d = JSON.parse(line); if (/^[\w-]+$/.test(d.id ?? "")) asks.push({ ...d, machine: m }); } catch {}
+      }
+    }
+    this.asks = asks;
+    const pub = asks.map(({ brief, ...a }) => a);
+    if (JSON.stringify(pub) !== JSON.stringify(shared("propeller.macAsks") ?? [])) setShared("propeller.macAsks", pub);
+  }
+
+  async dropAsk(a, to) {
+    await exec("sh", ["-c", 'mkdir -p "$HOME/mac-inbox/$2" && mv "$HOME/mac-inbox/$1.json" "$HOME/mac-inbox/$2/"', "sh", a.id, to], { on: a.machine, timeout: 8000 }).catch(() => null);
+    this.asks = (this.asks ?? []).filter((x) => !(x.id === a.id && x.machine === a.machine));
+    setShared("propeller.macAsks", (shared("propeller.macAsks") ?? []).filter((x) => !(x.id === a.id && x.machine === a.machine)));
+  }
+
+  async takeAsk(ref, cx) {
+    const a = (this.asks ?? []).find((x) => x.id === ref.id && x.machine === ref.machine);
+    if (!a) return;
+    const from = a.terminal ? `${a.machine}/${a.terminal}` : null;
+    const pane = from && panes().find((p) => p.terminal === from);
+    const serverSpace = pane && spaces().find((s) => s.tabs.some((t) => t.id === pane.tab));
+    const tabName = serverSpace?.tabs.find((t) => t.id === pane.tab)?.name ?? "";
+    const nestFile = `${home()}/.config/herdr-app/data/propeller-nest.json`;
+    let nest = {};
+    try { nest = JSON.parse(await fs.readFile(nestFile, "utf8")); } catch {}
+    const dir = `${home()}/.config/herdr-app/data/mac-asks`;
+    await exec("mkdir", ["-p", dir]).catch(() => null);
+    const file = `${dir}/${a.id}.md`;
+    await fs.writeFile(file, [
+      `Запит із сервера (${a.machine}${tabName ? `, вкладка «${tabName}»` : ""}, папка там ${a.cwd ?? "?"}): ${a.title}`, "",
+      a.brief, "", "---",
+      from
+        ? `Коли закінчиш, коротко відповідай тій серверній сесії: \`hc send ${from} "<відповідь>"\`. Довгий результат поклади файлом на сервер (\`scp <файл> ${a.machine}:<шлях>\`) і надішли шлях. Потім скажи Артему тут одним-двома рядками, що зроблено.`
+        : "Відповісти нікому: запит прийшов не з терміналу. Скажи результат Артему тут.",
+    ].join("\n"));
+    const argv = ["/bin/zsh", "-ic", `${CLEAN_ENV} claude "$(cat '${file}')"`];
+    const parent = serverSpace && nest[serverSpace.id];
+    if (parent && spaces().some((s) => s.id === parent)) {
+      run("tab.new", { space: parent, name: `Мак: ${a.title}`, folder: home(), argv });
+    } else {
+      const name = `${(serverSpace?.name ?? a.title).replace(/\s*·\s*сервер$/, "")} · Мак`;
+      run("space.new", { name, folder: home(), machine: "", argv });
+      // Put the server space under the new one, so the next request lands there too.
+      if (serverSpace) for (let i = 0; i < 20; i++) {
+        await cx.sleep(250);
+        const made = spaces().find((s) => !s.machine && s.name === name);
+        if (made) { nest[serverSpace.id] = made.id; await fs.writeFile(nestFile, JSON.stringify(nest)); break; }
+      }
+    }
+    await this.dropAsk(a, "taken");
   }
 
   // Sleeping spaces in the order you last touched them, newest first (as the cmux sidebar had it).
