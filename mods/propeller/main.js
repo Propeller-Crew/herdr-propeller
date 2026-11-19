@@ -714,6 +714,7 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
   // A sleeping space's idle Claudes quit (cmux did the same), so they hold no memory and leave
   // the Agents list; opening the space brings each back in the same conversation.
   quitClaude(s) {
+    if (s.active) return; // never the Claude on screen: it quits once you've left the space
     const tabs = new Set(s.tabs.map((t) => t.id));
     const status = new Map(terminals().map((t) => [t.address, t.status]));
     for (const p of panes()) {

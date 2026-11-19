@@ -160,6 +160,9 @@ export default class PropellerAgents extends View {
     this.lastActive = null;
     this.order = []; // space ids as shown, for alt-up/down
     this.rowsOrder = []; // [space id, tab id | null] as shown, for cmd-alt-up/down
+    // Spaces whose tab list is folded (the chevron on the row's mark, on hover): {space id: true}.
+    try { this.collapsed = JSON.parse(localStorage.getItem("collapsedTabs") ?? "{}"); } catch { this.collapsed = {}; }
+    this.hoverRow = null;
     this.closing = null; // what Cmd+W is closing, until those tabs are gone (closed() commits it)
     cx.spawn(async (cx) => {
       for (;;) {
@@ -381,21 +384,37 @@ export default class PropellerAgents extends View {
       .child(svg(`${ART}/chevron-${folded ? "right" : "down"}.svg`).size(12).text_color(t.dim));
   }
 
-  spaceRow(s, st, t) {
+  // n: how many tab rows the space has under it (0: none, so no chevron).
+  spaceRow(s, st, t, n = 0) {
     const on = s.active;
     const asleep = st.kind === "inactive";
     const label = ago(st.since);
+    const folded = n > 0 && this.collapsed[s.id];
+    // On hover the state mark of a space with tabs turns into a chevron: a click there folds or
+    // unfolds its tabs, a click anywhere else on the row still opens the space.
+    const chevron = n > 0 && this.hoverRow === s.id;
     return h_flex().id(`s-${s.id}`).h(30).flex_none().px(8).gap(8).items_center().rounded(8)
       .when(on, (el) => el.bg(t.selected))
       .when(!on, (el) => el.hover((x) => x.bg(t.hover)))
       .when(st.kind === "unread" && !on, (el) => el.bg("#4C9EEB24"))
       .when(this.dragging === s.id && this.moved, (el) => el.opacity(0.5))
-      .on_mouse_down("left", () => { this.dragging = s.id; this.moved = false; this.over = null; })
+      .on_mouse_down("left", () => { this.dragging = s.id; this.moved = false; this.over = null; this.pressed = true; })
       .on_mouse_move((_e, cx) => {
         if (this.dragging && this.dragging !== s.id && !this.moved) { this.moved = true; cx.notify(); }
         if (this.dragging && this.dragging !== s.id && this.over !== `s:${s.id}`) { this.over = `s:${s.id}`; cx.notify(); }
       })
-      .on_mouse_up("left", () => {
+      .on_hover((h, cx) => { if (h) this.hoverRow = s.id; else if (this.hoverRow === s.id) this.hoverRow = null; cx.notify(); })
+      .on_mouse_up("left", (_e, cx) => {
+        if (this.toggling === s.id) {
+          this.toggling = null;
+          if (!this.moved) {
+            this.collapsed = { ...this.collapsed, [s.id]: !this.collapsed[s.id] };
+            if (!this.collapsed[s.id]) delete this.collapsed[s.id];
+            localStorage.setItem("collapsedTabs", JSON.stringify(this.collapsed));
+            cx.notify();
+            return;
+          }
+        }
         if (this.dragging === s.id && !this.moved) run("space.select", { id: s.id });
         else if (this.dragging && this.dragging !== s.id && this.moved) this.nestUnder(this.dragging, s);
       })
@@ -407,8 +426,14 @@ export default class PropellerAgents extends View {
       .child(div().flex_1().min_w(0).truncate().text_size(13)
         .when(st.kind === "unread", (el) => el.font_semibold())
         .text_color(asleep && !on ? t.muted : t.foreground).child(spaceName(s)))
+      .when(Boolean(folded), (el) => el.child(div().flex_none().px(5).rounded(6).bg(t.hover).text_size(10.5).text_color(t.dim).child(String(n))))
       .child(div().flex_none().text_size(11.5).text_color(st.kind === "needs" ? "#F5A524" : st.kind === "unread" ? "#4C9EEB" : t.dim).child(label))
-      .child(this.mark(st.kind, t));
+      .child(chevron
+        ? h_flex().id(`fold-${s.id}`).w(22).h(18).flex_none().items_center().justify_end()
+          .on_mouse_down("left", () => { this.toggling = s.id; })
+          .child(h_flex().size(18).rounded(5).items_center().justify_center().hover((x) => x.bg(t.hover))
+            .child(svg(`${ART}/chevron-${folded ? "right" : "down"}.svg`).size(13).text_color(t.foreground)))
+        : this.mark(st.kind, t));
   }
 
   // A request from the server: click opens a Mac tab with Claude and its brief; right-click declines.
@@ -476,6 +501,7 @@ export default class PropellerAgents extends View {
       .when(this.draggingTab?.id === tab.id && this.moved, (el) => el.opacity(0.5))
       .on_mouse_down("left", () => {
         this.draggingTab = { id: tab.id, space: s.id };
+        this.pressed = true;
         if (remote) this.dragging = s.id;
         this.moved = false; this.over = null;
       })
@@ -580,7 +606,13 @@ export default class PropellerAgents extends View {
         .px(6).pb(8).gap(1).overflow_y_scroll().children(rows);
     });
     return v_flex().id("propeller-agents").size_full().rounded(13).overflow_hidden().bg(t.chrome).pt(8)
-      .on_mouse_down("left", () => { if (!this.dragging) this.moved = false; })
+      // A press that didn't start a drag here ends any older one: a release outside the panel never
+      // reached us, and a later click on «Сплять» put that old space to sleep (Recap, Ekforce, Herdr, 19.11).
+      .on_mouse_down("left", () => {
+        if (!this.pressed) { this.dragging = null; this.draggingTab = null; this.over = null; }
+        if (!this.dragging) this.moved = false;
+        this.pressed = false;
+      })
       .on_scroll_wheel((e, cx) => this.swiped(e, cx))
       // Any release ends a drag; one that left its row turns on "moved" for the targets above.
       .on_mouse_move((_e, cx) => { if ((this.dragging || this.draggingTab) && !this.moved && this.over) { this.moved = true; cx.notify(); } })
@@ -604,10 +636,11 @@ export default class PropellerAgents extends View {
       for (const a of asks) rows.push(this.askRow(a, t));
       const capped = sec.id === "inactive" && !this.allSleeping && list.length > SLEEPING_PREVIEW;
       for (const { s, st } of capped ? list.slice(0, SLEEPING_PREVIEW) : list) {
-        rows.push(this.spaceRow(s, st, t));
-        order.push(s.id);
         const kids = this.kids?.get(s.id) ?? [];
-        if (sec.id !== "inactive" && (s.tabs.length > 1 || kids.length)) {
+        const n = sec.id !== "inactive" && (s.tabs.length > 1 || kids.length) ? s.tabs.length + kids.reduce((a, k) => a + k.tabs.length, 0) : 0;
+        rows.push(this.spaceRow(s, st, t, n));
+        order.push(s.id);
+        if (n && !this.collapsed[s.id]) {
           // Перрі on top of the project's tabs, here or on the server; the rest in their spaces' order.
           const list = [...s.tabs.map((tab) => [s, tab, false]), ...kids.flatMap((k) => k.tabs.map((tab) => [k, tab, true]))];
           const boss = (x) => (this.bosses?.has(x[1].id) ? 0 : 1);
