@@ -605,7 +605,12 @@ export default class PropellerAgents extends View {
       if (p.id === this.profile) { this.order = order; this.rowsOrder = flat; }
       return v_flex().id(`page-${p.id}`).absolute().top(0).bottom(0).w_full().left((i - at) * W + (this.drag ?? 0))
         .spring("left", { response: 340, damping: 1 })
-        .px(6).pb(8).gap(1).overflow_y_scroll().children(rows);
+        .px(6).pb(8).overflow_y_scroll()
+        // Inside the scroll area, so a sideways swipe (and the momentum after it) can be kept from
+        // scrolling the list up or down (19.11: right after a swipe the new page jumped).
+        .child(v_flex().w_full().gap(1).on_scroll_wheel((e, cx) => {
+          if (this.swiped(e, cx, true)) cx.stop_propagation(); else this.innerSaw = true;
+        }).children(rows));
     });
     return v_flex().id("propeller-agents").size_full().rounded(13).overflow_hidden().bg(t.chrome).pt(8)
       // A press that didn't start a drag here ends any older one: a release outside the panel never
@@ -615,7 +620,7 @@ export default class PropellerAgents extends View {
         if (!this.dragging) this.moved = false;
         this.pressed = false;
       })
-      .on_scroll_wheel((e, cx) => this.swiped(e, cx))
+      .on_scroll_wheel((e, cx) => { if (this.innerSaw) this.innerSaw = false; else this.swiped(e, cx); })
       // Any release ends a drag; one that left its row turns on "moved" for the targets above.
       .on_mouse_move((_e, cx) => { if ((this.dragging || this.draggingTab) && !this.moved && this.over) { this.moved = true; cx.notify(); } })
       .on_mouse_up("left", (_e, cx) => {
@@ -663,14 +668,15 @@ export default class PropellerAgents extends View {
   // A two-finger sideways swipe: the pages follow it, and on release they go to the next
   // profile if it went far enough (a quarter of the panel), else back. Only a clearly
   // sideways gesture counts, so scrolling the list never moves the pages.
-  swiped(e, cx) {
-    if (e.bounds?.width) this.w = e.bounds.width;
+  // inner: from inside the scroll area, whose width isn't the page's.
+  swiped(e, cx, inner = false) {
+    if (!inner && e.bounds?.width) this.w = e.bounds.width;
     const W = this.w ?? 268, now = Date.now();
-    if (this.lock && now < this.lock) return;
+    if (this.lock && now < this.lock) return true;
     // A trackpad keeps sending scroll after the fingers lift (macOS momentum). Once a gesture
     // with phases has been seen, only events inside a touch (started..ended) move the pages.
-    if (e.touch_phase === "started") { this.trackpad = true; this.touching = true; }
-    else if (this.trackpad && !this.touching) return;
+    if (e.touch_phase === "started") { this.trackpad = true; this.touching = true; this.sideways = false; }
+    else if (this.trackpad && !this.touching) return this.sideways; // momentum: a sideways swipe's is swallowed
     const fresh = e.touch_phase === "started" || !this.swipe || now - this.swipe.at > 400;
     if (fresh) this.swipe = { x: 0, y: 0, axis: null, touch: e.touch_phase === "started" };
     const sw = this.swipe;
@@ -679,7 +685,8 @@ export default class PropellerAgents extends View {
     if (end) this.touching = false;
     if (!end) { sw.x += e.delta.x; sw.y += e.delta.y; }
     if (!sw.axis && Math.abs(sw.x) + Math.abs(sw.y) > 8) sw.axis = Math.abs(sw.x) > 2 * Math.abs(sw.y) ? "x" : "y";
-    if (sw.axis !== "x") { if (end) this.swipe = null; return; }
+    if (sw.axis !== "x") { if (end) this.swipe = null; return false; }
+    this.sideways = true;
     const at = PROFILES.findIndex((p) => p.id === this.profile);
     const dir = sw.x < 0 ? 1 : -1, edge = at + dir < 0 || at + dir >= PROFILES.length;
     // A mouse wheel (no "started"): it switches as soon as it is far enough.
@@ -692,5 +699,6 @@ export default class PropellerAgents extends View {
       this.drag = edge ? sw.x / 3 : Math.max(-W, Math.min(W, sw.x)); // past the last page it only gives a little
     }
     cx.notify();
+    return true;
   }
 }
