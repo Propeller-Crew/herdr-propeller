@@ -507,7 +507,9 @@ export default class PropellerAgents extends View {
       })
       .on_mouse_move((_e, cx) => {
         if (this.draggingTab && this.draggingTab.id !== tab.id && !this.moved) { this.moved = true; cx.notify(); }
-        if (this.draggingTab && this.over !== `t:${tab.id}`) { this.over = `t:${tab.id}`; cx.notify(); }
+        // Only another tab is a drop target: a jitter inside the pressed row stays a click (19.11:
+        // with it counted as a drag, a tab opened only on the second click).
+        if (this.draggingTab && this.draggingTab.id !== tab.id && this.over !== `t:${tab.id}`) { this.over = `t:${tab.id}`; cx.notify(); }
       })
       .on_mouse_up("left", () => {
         const d = this.draggingTab;
