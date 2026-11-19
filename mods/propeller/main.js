@@ -408,7 +408,7 @@ ${JSON.stringify(todo, null, 1)}`.replaceAll("/<id>.", only ? `/<id>-${Date.now(
           if (sid && !(await this.hasTranscript(sid, machine))) sid = prev?.session !== sid ? prev?.session : null;
           if (sid) this.state.claude[addr] = { shell: g.pid, session: sid, cwd: fg.cwd ?? s.cwd };
         } catch {}
-      } else if (prev && prev.shell !== g.pid) {
+      } else if (prev && prev.shell !== g.pid && !(prev.quit && Date.now() - prev.quit > 600000)) {
         // The shell under this terminal changed and Claude isn't running: the core
         // lost the program (reboot, crash, logout) and gave it a fresh shell.
         // Unset a parent Claude session's markers first (same line as shepherdr's clean-env.js):
@@ -416,8 +416,13 @@ ${JSON.stringify(todo, null, 1)}`.replaceAll("/<id>.", only ? `/<id>-${Date.now(
         // stops saving the conversation.
         await send(addr, `${CLEAN_ENV} claude --resume ${prev.session}`);
         prev.shell = g.pid;
-      } else if (prev) {
-        // Same shell, Claude gone: the person quit it on purpose.
+        delete prev.quit;
+      } else if (prev && !prev.quit) {
+        // Same shell, Claude gone: the person quit it on purpose, or the machine is shutting down
+        // (Claude dies before its shell). Kept for 10 minutes: a fresh shell by then means a reboot,
+        // and the conversation comes back (the server's reboot on 19.11 lost five of them).
+        prev.quit = Date.now();
+      } else if (prev && Date.now() - prev.quit > 600000) {
         delete this.state.claude[addr];
       }
     }
@@ -425,7 +430,10 @@ ${JSON.stringify(todo, null, 1)}`.replaceAll("/<id>.", only ? `/<id>-${Date.now(
     if (JSON.stringify(was) !== JSON.stringify(quiet)) setShared("propeller.claudeStatus", quiet);
     // Forget terminals that are closed for good. Keep the rest while the core reports none
     // (it may still be starting after a reboot).
-    if (live.size) for (const addr of Object.keys(this.state.claude)) if (!live.has(addr)) delete this.state.claude[addr];
+    // Per machine: while the server is away (a reboot) its terminals aren't listed at all, and the
+    // Mac's live ones must not make them look closed (19.11: five server conversations were forgotten).
+    const up = new Set([...live].map((a) => machineOf(a) ?? ""));
+    for (const addr of Object.keys(this.state.claude)) if (up.has(machineOf(addr) ?? "") && !live.has(addr)) delete this.state.claude[addr];
   }
 
   // --- 2. Sleeping -------------------------------------------------------------
@@ -554,7 +562,8 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
           // Dragged into "Сплять" by hand: put it to sleep now, back to its rules' folder on waking.
           this.state.settled[s.id] = RULES;
           this.state.dozed[s.id] = s.active ? "here" : "away";
-          this.state.seen[s.id] = Date.now() - DAY - 1000;
+          // seen stays its last activity: "Сплять" is ordered by it, the latest on top. (It was set to
+          // a day ago here, and a restart that re-ran this for all 37 sleepers made them one time, 19.11.)
         }
         if (this.sleeping(s)) {
           if (data.of[id] !== SLEEP.id) {
