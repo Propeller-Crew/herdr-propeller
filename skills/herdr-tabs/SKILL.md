@@ -31,7 +31,7 @@ A new space on another machine (`"machine": "propeller"`) that carries on the wo
 `python3 ~/.claude/skills/herdr-tabs/nest.py <its id>` right after, so the sidebar shows its tabs
 under this space with a server chip instead of a project of its own (`--off <id>` undoes it).
 
-Both print JSON with `terminal` (e.g. `t42`); keep it. Name the tab after the task, short. The
+Both print JSON with `terminal` (e.g. `t42`); keep it. To the user, call a tab by its name in Herdr, never by its terminal address (`t42`): they don't see addresses. Name the tab after the task, short. The
 folder is the project's (the vault's MAP.md → «Код», or `~/code/<name>`).
 
 ## How
