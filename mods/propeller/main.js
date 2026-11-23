@@ -84,6 +84,8 @@ export default class Propeller extends View {
     this.busy = false;
     cx.spawn(async (cx) => {
       try { this.state = { ...this.state, ...JSON.parse(await fs.readFile(statePath(), "utf8")) }; } catch {}
+      // «План» needs a Propeller Tasks token (mods/propeller-plan); without one the pill stays hidden.
+      setShared("propeller.planReady", await fs.exists(`${home()}/.config/herdr-app/data/plan-auth-header`).catch(() => false));
       await this.paint(null);
       await this.tick();
       await this.readLimits();

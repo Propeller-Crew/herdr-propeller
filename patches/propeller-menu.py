@@ -67,7 +67,7 @@ function propellerRun(command, args) {
       // The label alone gives a Claude no idea it is Перрі now: tell it, so it keeps the plan (23.11).
       if (args.on && terminals().some((t) => t.address === addr && t.state === "live"))
         exec("sh", ["-c", '"$HOME"/.local/bin/hc send "$1" "$2" >/dev/null', "sh", addr,
-          "Від Herdr: Артем зробив тебе Перрі, оркестратором цього простору. Прочитай ~/.claude/skills/herdr-tabs/perry.md і далі працюй за ним: заведи план у Propeller Tasks (розділ «План — у Propeller Tasks, не в чаті»), переклади туди поточний стан вкладок цього простору й рішення, що чекають на Артема, і заповни «Звіт» тим, що вже зроблено."]).catch(() => null);
+          "Від Herdr: тебе зробили Перрі, оркестратором цього простору. Прочитай ~/.claude/skills/herdr-tabs/perry.md і далі працюй за ним. Якщо в тебе є MCP propeller-tasks — заведи план (розділ «План — у Propeller Tasks, не в чаті»), переклади туди стан вкладок цього простору й рішення, що чекають на людину, і заповни «Звіт»."]).catch(() => null);
     }
     return;
   }

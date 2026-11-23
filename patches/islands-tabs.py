@@ -75,17 +75,18 @@ swap('''openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab
 s = re.sub(r'\n *\.on_scroll_wheel\(e => \{[^\n]*run\(e\.delta\.y > 0 \? "tab\.prev" : "tab\.next"\);? \}\)', '', s, count=1)
 if 'run(e.delta.y > 0 ? "tab.prev"' in s: sys.exit("islands-tabs patch: upstream changed the wheel handler")
 
-# 7. «План» (mods/propeller-plan): a pill for the side panel's plan block, in every space (a space
+# 7. «План» (mods/propeller-plan): a pill for the side panel's plan block, in every space when this
+#    Mac has a Propeller Tasks token (shared propeller.planReady, set by the propeller mod; a space
 #    without a plan says how to start one). Not only where a plan exists: the plan mod runs only
 #    while the panel is open, so it couldn't tell the bar beforehand (23.11).
 swap('''const enabled = shared("workspace.panels") ?? ["files", "changes"];''',
      '''const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), "plan"];''')
 swap('''        .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))''',
      '''        .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
-        .child(actionPill("tab-plan", svg("mods/propeller-art/list-checks.svg").size(15), () => {
+        .when(Boolean(shared("propeller.planReady")), el => el.child(actionPill("tab-plan", svg("mods/propeller-art/list-checks.svg").size(15), () => {
           if (panel && !panel.hidden && body?.active === "plan") run("layout.hide", { id: "panel" });
           else { run("layout.select", { stack: "panel-body", child: "plan" }); run("layout.show", { id: "panel" }); }
-        }, Boolean(panel && !panel.hidden && body?.active === "plan")))''')
+        }, Boolean(panel && !panel.hidden && body?.active === "plan"))))''')
 
 # 8. The side panel stays as you left it across spaces. Upstream restored it per space, so going
 #    between a space with it open and one without changed the terminal's width each time, and
