@@ -172,7 +172,8 @@ export default class PropellerPlan extends View {
     const parse = (raw) => {
       const links = [...raw.matchAll(/https?:\/\/\S+/g)].map((m) => m[0].replace(/[).,;·]+$/, ""));
       let text = raw.replace(/https?:\/\/\S+/g, "").replace(/\s*·\s*(?=·|$)/g, "").replace(/[ \t]+\n/g, "\n").trim();
-      text = text.replace(/^\d{1,2}\.\d{1,2}(\.\d{2,4})?\s*[·—-]\s*/, "").replace(/[\s·—-]+$/, "");
+      text = text.replace(/\(\s*[,;·]?\s*\)/g, "").replace(/\(\s*$/g, "").replace(/\s+([.,;])/g, "$1");
+      text = text.replace(/^\d{1,2}\.\d{1,2}(\.\d{2,4})?\s*[·—-]\s*/, "").replace(/[\s·—(-]+$/, "");
       const m = /^(.+?[.!?])(\s+|$)([\s\S]*)$/.exec(text);
       return { head: m ? m[1] : text, rest: m ? m[3].trim() : "", links };
     };

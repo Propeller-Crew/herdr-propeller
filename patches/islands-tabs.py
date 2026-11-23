@@ -87,4 +87,13 @@ swap('''        .when(enabled.includes("changes"), el => el.child(panelButton("c
           else { run("layout.select", { stack: "panel-body", child: "plan" }); run("layout.show", { id: "panel" }); }
         }, Boolean(panel && !panel.hidden && body?.active === "plan")))''')
 
+# 8. The side panel stays as you left it across spaces. Upstream restored it per space, so going
+#    between a space with it open and one without changed the terminal's width each time, and
+#    Claude Code redrew its screen into the scrollback: the same answer stacked up again and
+#    again (23.11, once «План» lived there).
+swap('''  syncPanel(space, panel, body, enabled) {
+    if (!space || !panel) return;''', '''  syncPanel(space, panel, body, enabled) {
+    return; // one panel for every space (patch 8)
+    if (!space || !panel) return;''')
+
 open(path, "w").write(s)
