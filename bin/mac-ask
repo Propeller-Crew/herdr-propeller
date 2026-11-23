@@ -3,8 +3,28 @@
 # Кладе запит у ~/mac-inbox; Herdr на Маку показує його в «Чекає на тебе», і Артем одним кліком
 # відкриває макову вкладку з Claude і цим брифом. Відповідь приходить у цей термінал повідомленням.
 # Бриф стоїть сам по собі: що зробити, де, навіщо, що повернути. Сам Мак без кліку Артема нічого не запускає.
+#
+# mac-ask --close-tabs "Назва вкладки" […] — попросити закрити вкладки макового простору, під яким
+# стоїть твій серверний (наприклад, виконані «Мак: …»). Після кліку Артема Herdr закриває їх сам,
+# без Claude; вкладку, що працює чи чекає на нього, не чіпає. Відповідь — що закрито, що ні.
 set -eu
-[ $# -ge 1 ] || { echo 'usage: mac-ask "Назва" < бриф.md' >&2; exit 2; }
+[ $# -ge 1 ] || { echo 'usage: mac-ask "Назва" < бриф.md   або   mac-ask --close-tabs "Вкладка" […]' >&2; exit 2; }
+if [ "$1" = "--close-tabs" ]; then
+  shift
+  [ $# -ge 1 ] || { echo 'mac-ask --close-tabs: назви вкладок?' >&2; exit 2; }
+  mkdir -p "$HOME/mac-inbox"
+  id=$(date -u +%Y%m%d-%H%M%S)-$$
+  ID="$id" python3 -c '
+import json, os, sys
+tabs = sys.argv[1:]
+d = {"id": os.environ["ID"], "action": "close-tabs", "tabs": tabs, "title": f"закрити вкладки ({len(tabs)})",
+     "brief": "\n".join(tabs), "terminal": os.environ.get("HC_TERMINAL_ID"), "cwd": os.getcwd()}
+p = os.path.expanduser("~/mac-inbox/" + d["id"] + ".json")
+open(p + ".tmp", "w").write(json.dumps(d, ensure_ascii=False)); os.replace(p + ".tmp", p)
+' "$@"
+  echo "запит $id: Артем одним кліком закриє ці вкладки на Маку; відповідь прийде сюди."
+  exit 0
+fi
 mkdir -p "$HOME/mac-inbox"
 id=$(date -u +%Y%m%d-%H%M%S)-$$  # UTC: the Mac reads the time from it
 TITLE="$1" ID="$id" python3 -c '

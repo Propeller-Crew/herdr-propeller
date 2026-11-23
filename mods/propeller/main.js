@@ -637,6 +637,7 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
   async takeAsk(ref, cx) {
     const a = (this.asks ?? []).find((x) => x.id === ref.id && x.machine === ref.machine);
     if (!a) return;
+    if (a.action === "close-tabs") return this.closeTabsAsk(a);
     const from = a.terminal ? `${a.machine}/${a.terminal}` : null;
     const pane = from && panes().find((p) => p.terminal === from);
     const serverSpace = pane && spaces().find((s) => s.tabs.some((t) => t.id === pane.tab));
@@ -668,6 +669,28 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
         if (made) { nest[serverSpace.id] = made.id; await fs.writeFile(nestFile, JSON.stringify(nest)); break; }
       }
     }
+    await this.dropAsk(a, "taken");
+  }
+
+  // «Закрити вкладки» from a server Перрі (mac-ask --close-tabs): only tabs of the Mac space its
+  // server space sits under (propeller-nest.json), only ones not working or waiting on Artem.
+  // Herdr closes them itself, no Claude; the asking terminal hears what closed and what didn't.
+  async closeTabsAsk(a) {
+    const from = a.terminal ? `${a.machine}/${a.terminal}` : null;
+    const pane = from && panes().find((p) => p.terminal === from);
+    const serverSpace = pane && spaces().find((s) => s.tabs.some((t) => t.id === pane.tab));
+    let nest = {};
+    try { nest = JSON.parse(await fs.readFile(`${home()}/.config/herdr-app/data/propeller-nest.json`, "utf8")); } catch {}
+    const mac = serverSpace && spaces().find((s) => s.id === nest[serverSpace.id]);
+    const closed = [], kept = [];
+    for (const name of a.tabs ?? []) {
+      const tab = mac?.tabs.find((t) => t.name === name);
+      if (!tab) { kept.push(`«${name}» (нема такої вкладки в маковому просторі)`); continue; }
+      if (tab.status === "working" || tab.status === "blocked") { kept.push(`«${name}» (працює чи чекає на Артема)`); continue; }
+      run("tab.close", { id: tab.id, confirmed: true });
+      closed.push(`«${name}»`);
+    }
+    if (from) send(from, `Від Herdr на Маку: закрито ${closed.length ? closed.join(", ") : "нічого"}.${kept.length ? ` Не закрито: ${kept.join(", ")}.` : ""}`).catch(() => null);
     await this.dropAsk(a, "taken");
   }
 
