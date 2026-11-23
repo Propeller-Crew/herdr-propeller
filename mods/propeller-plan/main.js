@@ -53,6 +53,7 @@ export default class PropellerPlan extends View {
     this.open = null;      // expanded task id
     this.comments = {};    // task id -> comments
     this.doneOpen = false;
+    this.view = "plan";    // "plan": the queue; "report": what got done (project comments + «Готово»)
     this.sending = false;
     this.input = InputState.new({ placeholder: "Коментар у картку (Enter — надіслати)" });
     this.input.on("submit", (_e, cx) => { cx.spawn(async (cx) => { await this.comment(); cx.notify(); }); });
@@ -87,10 +88,11 @@ export default class PropellerPlan extends View {
     if (changed) { this.data = null; this.open = null; this.comments = {}; this.err = null; }
     if (!p || (!full && !changed)) return changed;
     try {
-      const [project, sections, tasks] = await Promise.all([
-        api(`/projects/${p.project}`), all(`/sections?project_id=${p.project}`), all(`/tasks?project_id=${p.project}`)]);
+      const [project, sections, tasks, report] = await Promise.all([
+        api(`/projects/${p.project}`), all(`/sections?project_id=${p.project}`), all(`/tasks?project_id=${p.project}`),
+        all(`/comments?project_id=${p.project}`)]);
       if (this.plan?.project !== p.project) return true;
-      this.data = { project, sections, tasks };
+      this.data = { project, sections, tasks, report };
       this.err = null;
       if (this.open) await this.loadComments(this.open);
     } catch (e) {
@@ -152,6 +154,38 @@ export default class PropellerPlan extends View {
         .child(Input.new(this.input).h_full().w_full().text_size(12).text_color(t.foreground)));
   }
 
+  // «Звіт»: Перрі's results, one project comment each, newest first by day; then the closed cards.
+  reportRows(t) {
+    const { sections, tasks, report } = this.data;
+    const rows = [];
+    const day = (iso) => {
+      const d = new Date(iso);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const diff = Math.round((today - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+      return diff === 0 ? "Сьогодні" : diff === 1 ? "Вчора" : `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+    };
+    const items = [...(report ?? [])].sort((a, b) => (b.posted_at ?? "").localeCompare(a.posted_at ?? ""));
+    let last = null;
+    for (const c of items) {
+      const d = day(c.posted_at);
+      if (d !== last) { rows.push(div().mt(10).mb(2).px(6).text_size(11.5).font_semibold().text_color(t.dim).child(d)); last = d; }
+      const time = new Date(c.posted_at);
+      rows.push(h_flex().flex_none().px(8).py(5).gap(8).items_start()
+        .child(div().flex_none().w(34).pt(1).text_size(11).text_color(t.dim)
+          .child(`${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`))
+        .child(div().flex_1().min_w(0).text_size(12.5).text_color(t.foreground).child((c.content ?? "").slice(0, 1500))));
+    }
+    if (!items.length) rows.push(div().px(10).py(8).text_size(12).text_color(t.dim)
+      .child("Звіту ще немає. Перрі пише сюди коментар до проєкту на кожен готовий результат."));
+    const doneId = sections.find((x) => x.name === "Готово")?.id;
+    const done = tasks.filter((x) => !x.is_deleted && (x.checked || (doneId && x.section_id === doneId)));
+    if (done.length) {
+      rows.push(div().mt(14).mb(2).px(6).text_size(11.5).font_semibold().text_color(t.dim).child(`Закриті картки · ${done.length}`));
+      for (const x of done) rows.push(this.row(x, t, "#34C759"));
+    }
+    return rows;
+  }
+
   render() {
     const t = theme();
     const box = v_flex().id("propeller-plan").size_full().bg(t.chrome).rounded(13).overflow_hidden();
@@ -182,13 +216,17 @@ export default class PropellerPlan extends View {
       if (!folded) for (const x of list) rows.push(this.row(x, t, color));
     }
     if (!rows.length) rows.push(div().px(10).py(8).text_size(12).text_color(t.dim).child("Відкритих задач немає"));
+    const pill = (id, label) => div().id(`view-${id}`).px(9).py(3).rounded(7).text_size(12)
+      .bg(this.view === id ? t.hover : "#00000000").text_color(this.view === id ? t.foreground : t.muted)
+      .hover((x) => x.text_color(t.foreground)).on_click((_e, cx) => { this.view = id; this.open = null; cx.notify(); }).child(label);
     return box
       .child(h_flex().flex_none().h(38).px(12).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().flex_1().min_w(0).truncate().text_size(13).font_semibold().text_color(t.foreground).child(project?.name ?? "План"))
+        .child(h_flex().flex_none().gap(2).child(pill("plan", "Черга")).child(pill("report", "Звіт")))
         .when(Boolean(this.err), (el) => el.child(div().text_size(11).text_color("#F5A524").child("!")))
         .child(div().id("plan-web").px(7).py(3).rounded(6).text_size(11.5).text_color(t.muted).hover((x) => x.bg(t.hover).text_color(t.foreground))
           .on_click(() => exec("open", [`${BASE}/project/${this.plan.project}`]).catch(() => null))
           .child("у вебі ↗")))
-      .child(v_flex().id("plan-list").flex_1().min_h(0).px(6).pb(10).overflow_y_scroll().children(rows));
+      .child(v_flex().id("plan-list").flex_1().min_h(0).px(6).pb(10).overflow_y_scroll().children(this.view === "report" ? this.reportRows(t) : rows));
   }
 }
