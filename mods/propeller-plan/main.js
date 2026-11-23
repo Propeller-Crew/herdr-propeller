@@ -20,6 +20,10 @@ const BASE = "https://tasks.propellercrew.com";
 const API = `${BASE}/api/v1`;
 const ART = "mods/propeller-art";
 const ORDER = ["Чекає на тебе", "В роботі", "На рев'ю", "Готово"];
+// A product's own board (Перрі plans there when it exists): what waits for Artem carries this label.
+const WAITS = "чекає-на-артема";
+// Long sections start folded: the backlog, ideas, done.
+const FOLD = /backlog|бэклог|беклог|ідеї|ideas|готово|done|archive|архів/i;
 const COLOR = { "Чекає на тебе": "#F5A524", "В роботі": "#9B7BFF", "На рев'ю": "#4C9EEB", "Готово": "#34C759" };
 const header = () => `${home()}/.config/herdr-app/data/plan-auth-header`;
 
@@ -52,7 +56,7 @@ export default class PropellerPlan extends View {
     this.err = null;
     this.open = null;      // expanded task id
     this.comments = {};    // task id -> comments
-    this.doneOpen = false;
+    this.unfolded = {};    // section name -> true once opened by hand
     this.view = "plan";    // "plan": the queue; "report": what got done (project comments + «Готово»)
     this.sending = false;
     this.input = InputState.new({ placeholder: "Коментар у картку (Enter — надіслати)" });
@@ -154,30 +158,54 @@ export default class PropellerPlan extends View {
         .child(Input.new(this.input).h_full().w_full().text_size(12).text_color(t.foreground)));
   }
 
-  // «Звіт»: Перрі's results, one project comment each, newest first by day; then the closed cards.
+  // «Звіт»: what got done, as something to read rather than a log (Artem, 23.11). Per day: Перрі's
+  // «Підсумок дня: …» comment on top as a card, then one row per result: its first sentence in bold
+  // (what changed), the rest small, links as «#152» chips. No per-row time or date.
   reportRows(t) {
     const { sections, tasks, report } = this.data;
     const rows = [];
-    const day = (iso) => {
-      const d = new Date(iso);
-      const today = new Date(); today.setHours(0, 0, 0, 0);
+    const dayOf = (iso) => {
+      const d = new Date(iso), today = new Date(); today.setHours(0, 0, 0, 0);
       const diff = Math.round((today - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
       return diff === 0 ? "Сьогодні" : diff === 1 ? "Вчора" : `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
     };
-    const items = [...(report ?? [])].sort((a, b) => (b.posted_at ?? "").localeCompare(a.posted_at ?? ""));
-    let last = null;
-    for (const c of items) {
-      const d = day(c.posted_at);
-      if (d !== last) { rows.push(div().mt(10).mb(2).px(6).text_size(11.5).font_semibold().text_color(t.dim).child(d)); last = d; }
-      const time = new Date(c.posted_at);
-      rows.push(h_flex().flex_none().px(8).py(5).gap(8).items_start()
-        .child(div().flex_none().w(34).pt(1).text_size(11).text_color(t.dim)
-          .child(`${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`))
-        .child(div().flex_1().min_w(0).text_size(12.5).text_color(t.foreground).child((c.content ?? "").slice(0, 1500))));
+    const parse = (raw) => {
+      const links = [...raw.matchAll(/https?:\/\/\S+/g)].map((m) => m[0].replace(/[).,;·]+$/, ""));
+      let text = raw.replace(/https?:\/\/\S+/g, "").replace(/\s*·\s*(?=·|$)/g, "").replace(/[ \t]+\n/g, "\n").trim();
+      text = text.replace(/^\d{1,2}\.\d{1,2}(\.\d{2,4})?\s*[·—-]\s*/, "").replace(/[\s·—-]+$/, "");
+      const m = /^(.+?[.!?])(\s+|$)([\s\S]*)$/.exec(text);
+      return { head: m ? m[1] : text, rest: m ? m[3].trim() : "", links };
+    };
+    const chip = (url) => {
+      const pr = /\/pull\/(\d+)/.exec(url), label = pr ? `#${pr[1]}` : url.replace(/^https?:\/\//, "").split("/")[0];
+      return div().id(`l-${url}`).px(6).py(1).rounded(5).bg(t.hover).text_size(11).text_color(t.muted)
+        .hover((x) => x.text_color(t.foreground)).on_click(() => exec("open", [url]).catch(() => null)).child(label);
+    };
+    const byDay = new Map();
+    for (const c of [...(report ?? [])].sort((a, b) => (b.posted_at ?? "").localeCompare(a.posted_at ?? ""))) {
+      const d = dayOf(c.posted_at);
+      if (!byDay.has(d)) byDay.set(d, []);
+      byDay.get(d).push(c);
     }
-    if (!items.length) rows.push(div().px(10).py(8).text_size(12).text_color(t.dim)
-      .child("Звіту ще немає. Перрі пише сюди коментар до проєкту на кожен готовий результат."));
-    const doneId = sections.find((x) => x.name === "Готово")?.id;
+    for (const [d, list] of byDay) {
+      rows.push(div().mt(12).mb(4).px(6).text_size(11.5).font_semibold().text_color(t.dim).child(d));
+      const summary = list.find((c) => /^\s*підсумок/i.test(c.content ?? ""));
+      if (summary) rows.push(div().flex_none().mx(4).mb(6).p(10).rounded(10).bg("#9B7BFF1f")
+        .text_size(13).text_color(t.foreground).child((summary.content ?? "").replace(/^\s*підсумок[^:]*:\s*/i, "")));
+      for (const c of list) {
+        if (c === summary) continue;
+        const { head, rest, links } = parse(c.content ?? "");
+        rows.push(v_flex().flex_none().px(10).py(6).gap(2)
+          .child(h_flex().gap(8).items_start()
+            .child(div().mt(6).size(5).flex_none().rounded(3).bg("#34C759"))
+            .child(div().flex_1().min_w(0).text_size(13).font_semibold().text_color(t.foreground).child(head)))
+          .when(Boolean(rest), (el) => el.child(div().pl(13).text_size(12).text_color(t.muted).child(rest.slice(0, 600))))
+          .when(links.length > 0, (el) => el.child(h_flex().pl(13).pt(2).gap(4).flex_wrap().children(links.slice(0, 8).map(chip)))));
+      }
+    }
+    if (!byDay.size) rows.push(div().px(10).py(8).text_size(12).text_color(t.dim)
+      .child("Звіту ще немає. Перрі пише сюди на кожен готовий результат."));
+    const doneId = sections.find((x) => /^(готово|done)$/i.test(x.name.trim()))?.id;
     const done = tasks.filter((x) => !x.is_deleted && (x.checked || (doneId && x.section_id === doneId)));
     if (done.length) {
       rows.push(div().mt(14).mb(2).px(6).text_size(11.5).font_semibold().text_color(t.dim).child(`Закриті картки · ${done.length}`));
@@ -197,22 +225,25 @@ export default class PropellerPlan extends View {
     const byName = new Map(sections.map((s) => [s.id, s.name]));
     const groups = new Map();
     for (const x of open) {
-      const name = byName.get(x.section_id) ?? "Без розділу";
+      const name = (x.labels ?? []).includes(WAITS) ? "Чекає на тебе" : byName.get(x.section_id) ?? "Без розділу";
       if (!groups.has(name)) groups.set(name, []);
       groups.get(name).push(x);
     }
-    const names = [...ORDER.filter((n) => groups.has(n)), ...[...groups.keys()].filter((n) => !ORDER.includes(n))];
+    // «Чекає на тебе» first, then the board's own sections in their order, then the rest.
+    const own = [...sections].sort((a, b) => (a.section_order ?? 0) - (b.section_order ?? 0)).map((x) => x.name);
+    const names = [...new Set(["Чекає на тебе", ...own, ...ORDER, ...groups.keys()])].filter((n) => groups.has(n));
     const rows = [];
     for (const name of names) {
       const list = groups.get(name).sort((a, b) => (a.child_order ?? 0) - (b.child_order ?? 0));
       const color = COLOR[name] ?? t.dim;
-      const folded = name === "Готово" && !this.doneOpen;
+      const foldable = name !== "Чекає на тебе" && (FOLD.test(name) || groups.get(name).length > 12);
+      const folded = foldable && !this.unfolded[name];
       rows.push(h_flex().id(`sec-${name}`).flex_none().mt(8).mb(2).px(4).gap(6).items_center()
-        .when(name === "Готово", (el) => el.cursor_pointer().on_click((_e, cx) => { this.doneOpen = !this.doneOpen; cx.notify(); }))
+        .when(foldable, (el) => el.cursor_pointer().on_click((_e, cx) => { this.unfolded = { ...this.unfolded, [name]: !this.unfolded[name] }; cx.notify(); }))
         .child(h_flex().gap(5).px(9).py(3).rounded(11).bg(color + "33").items_center()
           .child(div().text_size(12).font_semibold().text_color(color).child(name))
           .child(div().text_size(11).font_bold().text_color(color).opacity(0.7).child(String(list.length))))
-        .when(name === "Готово", (el) => el.child(div().flex_1()).child(svg(`${ART}/chevron-${folded ? "right" : "down"}.svg`).size(12).text_color(t.dim))));
+        .when(foldable, (el) => el.child(div().flex_1()).child(svg(`${ART}/chevron-${folded ? "right" : "down"}.svg`).size(12).text_color(t.dim))));
       if (!folded) for (const x of list) rows.push(this.row(x, t, color));
     }
     if (!rows.length) rows.push(div().px(10).py(8).text_size(12).text_color(t.dim).child("Відкритих задач немає"));
