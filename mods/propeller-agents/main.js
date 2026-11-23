@@ -18,6 +18,11 @@ import * as fs from "fs/promises";
 const DAY = 24 * 3600 * 1000;
 const ART = "mods/propeller-art";
 // The cmux sidebar's section colours.
+// When a request was left: its id starts with the UTC time (bin/mac-ask, Content Studio).
+const askedAt = (a) => {
+  const at = /^(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)/.exec(a.id ?? "");
+  return at ? Date.UTC(+at[1], at[2] - 1, +at[3], +at[4], +at[5], +at[6]) : null;
+};
 const SECTIONS = [
   { id: "needs", name: "Чекає на тебе", color: "#F5A524", icon: "hand" },
   { id: "unread", name: "Нове", color: "#4C9EEB", icon: "dot" },
@@ -437,16 +442,17 @@ export default class PropellerAgents extends View {
   }
 
   // A request from the server: click opens a Mac tab with Claude and its brief; right-click declines.
-  askRow(a, t) {
-    const at = /^(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)/.exec(a.id);
-    const since = at ? Date.UTC(+at[1], at[2] - 1, +at[3], +at[4], +at[5], +at[6]) : null;
+  // under: drawn under its own space, indented like a tab and without the "Мак:" prefix.
+  askRow(a, t, under = false) {
+    const since = askedAt(a);
     return h_flex().id(`ask-${a.machine}-${a.id}`).h(30).flex_none().px(8).gap(8).items_center().rounded(8)
+      .when(under, (el) => el.ml(18))
       .bg("#F5A52414").hover((x) => x.bg("#F5A52430"))
       .on_click(() => setShared("propeller.macAsk.take", { id: a.id, machine: a.machine, at: Date.now() }))
       .on_mouse_down("right", () => setShared("propeller.macAsk.decline", { id: a.id, machine: a.machine, at: Date.now() }))
       .child(h_flex().size(18).flex_none().rounded(5).bg("#F5A52433").items_center().justify_center()
         .child(svg(`${ART}/laptop.svg`).size(12).text_color("#F5A524")))
-      .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(`Мак: ${a.title}`))
+      .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(under ? a.title : `Мак: ${a.title}`))
       .child(div().flex_none().text_size(11.5).text_color("#F5A524").child(ago(since)))
       .child(this.mark("needs", t));
   }
@@ -583,10 +589,13 @@ export default class PropellerAgents extends View {
       if (s.machine && ids.has(this.nest[s.id])) continue; // drawn under its space here
       const kids = this.kids.get(s.id) ?? [];
       // The space and its server half are one project: the most urgent state of either, the latest activity.
-      const st = kids.length
+      let st = kids.length
         ? this.state({ ...s, tabs: [...s.tabs, ...kids.flatMap((k) => k.tabs)] },
           { ...seen, [s.id]: Math.max(seen[s.id] ?? 0, ...kids.map((k) => seen[k.id] ?? 0)) || undefined }, asleep)
         : this.state(s, seen, asleep);
+      // A request for this space (Content Studio's «В Herdr»): the space waits on you until it's taken.
+      const asked = (shared("propeller.macAsks") ?? []).filter((a) => a.space === s.id).map(askedAt);
+      if (asked.length) st = { ...st, kind: "needs", since: Math.max(...asked.map((x) => x ?? 0)) || st.since };
       everywhere[st.kind].push({ s, st });
       byProfile[profileOf(s)][st.kind].push({ s, st });
     }
@@ -636,7 +645,9 @@ export default class PropellerAgents extends View {
     for (const sec of SECTIONS) {
       const list = groups[sec.id];
       // Requests from a Claude on another machine that needs this Mac (bin/mac-ask, the propeller mod).
-      const asks = sec.id === "needs" ? shared("propeller.macAsks") ?? [] : [];
+      // Those that name one of this Mac's spaces sit under it instead.
+      const macAsks = shared("propeller.macAsks") ?? [];
+      const asks = sec.id === "needs" ? macAsks.filter((a) => !a.space) : [];
       if (!list.length && !asks.length) continue;
       rows.push(this.header(sec, list.length + asks.length, t));
       if (this.folded[sec.id]) continue;
@@ -646,6 +657,7 @@ export default class PropellerAgents extends View {
         const kids = this.kids?.get(s.id) ?? [];
         const n = sec.id !== "inactive" && (s.tabs.length > 1 || kids.length) ? s.tabs.length + kids.reduce((a, k) => a + k.tabs.length, 0) : 0;
         rows.push(this.spaceRow(s, st, t, n));
+        for (const a of macAsks.filter((x) => x.space === s.id)) rows.push(this.askRow(a, t, true));
         order.push(s.id);
         if (n && !this.collapsed[s.id]) {
           // Перрі on top of the project's tabs, here or on the server; the rest in their spaces' order.

@@ -41,6 +41,17 @@ const statePath = () => `${home()}/.config/herdr-app/data/propeller-state.json`;
 const colorsPath = () => `${home()}/.config/herdr-app/data/propeller-colors.json`;
 const importPath = () => `${home()}/.config/herdr-app/data/propeller-import.json`;
 const machineOf = (addr) => (addr.includes("/") ? addr.split("/")[0] : null);
+// A request may name the Mac space it belongs to ("workspace", Content Studio): matched by name or
+// folder name, case, spaces and the ✳ ◑ marks aside; a few product names differ in Herdr.
+const KEY = (x) => String(x ?? "").toLowerCase().normalize("NFC").replace(/[^\p{L}\p{N}]/gu, "");
+const ALIAS = { appmap: "апмап" };
+function macSpaceFor(name) {
+  const want = KEY(name);
+  if (!want) return null;
+  const keys = new Set([want, ALIAS[want]].filter(Boolean));
+  const mac = spaces().filter((s) => !s.machine);
+  return mac.find((s) => keys.has(KEY(s.name))) ?? mac.find((s) => s.folder && keys.has(KEY(s.folder.split("/").pop()))) ?? null;
+}
 
 // hc() has no timeout, and one stuck call froze the activity clock for a night (11.11.2026).
 // The same hc through exec, which gives up after `timeout`; plain hc() if it isn't where Herdr puts it.
@@ -625,6 +636,7 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
         try { const d = JSON.parse(line); if (/^[\w-]+$/.test(d.id ?? "")) asks.push({ ...d, machine: m }); } catch {}
       }
     }
+    for (const a of asks) a.space = a.workspace ? macSpaceFor(a.workspace)?.id ?? null : null;
     this.asks = asks;
     const pub = asks.map(({ brief, ...a }) => a);
     if (JSON.stringify(pub) !== JSON.stringify(shared("propeller.macAsks") ?? [])) setShared("propeller.macAsks", pub);
@@ -640,6 +652,8 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
     const a = (this.asks ?? []).find((x) => x.id === ref.id && x.machine === ref.machine);
     if (!a) return;
     if (a.action === "close-tabs") return this.closeTabsAsk(a);
+    const own = a.workspace ? macSpaceFor(a.workspace) : null;
+    if (own) return this.workspaceAsk(a, own);
     const from = a.terminal ? `${a.machine}/${a.terminal}` : null;
     const pane = from && panes().find((p) => p.terminal === from);
     const serverSpace = pane && spaces().find((s) => s.tabs.some((t) => t.id === pane.tab));
@@ -671,6 +685,24 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
         if (made) { nest[serverSpace.id] = made.id; await fs.writeFile(nestFile, JSON.stringify(nest)); break; }
       }
     }
+    await this.dropAsk(a, "taken");
+  }
+
+  // A request that names its product's Mac space (Content Studio's «В Herdr»): every one gets a new
+  // Claude tab there, in the space's folder, called by the request's title. Nobody is answered:
+  // the brief carries the command that brings the result back (cs-attach.py).
+  async workspaceAsk(a, space) {
+    const dir = `${home()}/.config/herdr-app/data/mac-asks`;
+    await exec("mkdir", ["-p", dir]).catch(() => null);
+    const file = `${dir}/${a.id}.md`;
+    const from = a.terminal ? `${a.machine}/${a.terminal}` : null;
+    await fs.writeFile(file, [
+      a.brief, "", "---",
+      from
+        ? `Коли закінчиш, коротко відповідай тій серверній сесії: \`hc send ${from} "<відповідь>"\`. Потім скажи Артему тут одним-двома рядками, що зроблено.`
+        : `Запит прийшов${a.source ? ` із ${a.source}` : ""}${a.url ? ` (${a.url})` : ""}. Результат повертай так, як сказано в брифі, а Артему тут скажи одним-двома рядками, що зроблено.`,
+    ].join("\n"));
+    run("tab.new", { space: space.id, name: a.title, folder: space.folder || home(), argv: ["/bin/zsh", "-ic", `${CLEAN_ENV} claude "$(cat '${file}')"`] });
     await this.dropAsk(a, "taken");
   }
 
