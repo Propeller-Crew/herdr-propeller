@@ -13,7 +13,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { spaces, panes, terminals, theme, home, exec, checking, setShared, shared } from "herdr";
+import { spaces, panes, terminals, theme, home, exec, checking } from "herdr";
 import * as fs from "fs/promises";
 
 const BASE = "https://tasks.propellercrew.com";
@@ -84,9 +84,6 @@ export default class PropellerPlan extends View {
     const p = await this.find();
     const changed = (p?.project ?? null) !== (this.plan?.project ?? null);
     this.plan = p;
-    // For the tab bar's «План» pill: which space on screen has a plan.
-    const here = p ? spaces().find((s) => s.active)?.id ?? null : null;
-    if (shared("propeller.planFor") !== here) setShared("propeller.planFor", here);
     if (changed) { this.data = null; this.open = null; this.comments = {}; this.err = null; }
     if (!p || (!full && !changed)) return changed;
     try {
@@ -159,7 +156,7 @@ export default class PropellerPlan extends View {
     const t = theme();
     const box = v_flex().id("propeller-plan").size_full().bg(t.chrome).rounded(13).overflow_hidden();
     const note = (text) => box.child(div().p(14).text_size(12.5).text_color(t.muted).child(text));
-    if (!this.plan) return note("У цьому просторі плану ще немає. Його веде Перрі: проєкт у Propeller Tasks і мітка propeller.plan на його терміналі (skills/herdr-tabs/perry.md).");
+    if (!this.plan) return note("У цьому просторі плану ще немає. Його веде Перрі: правий клік по простору → «Покликати Перрі», і він заведе дошку в Propeller Tasks. Уже є Перрі — попроси його «заведи план».");
     if (!this.data) return note(this.err ? `План не завантажився: ${this.err}` : "Завантажую план…");
     const { project, sections, tasks } = this.data;
     const open = tasks.filter((x) => !x.checked && !x.is_deleted);

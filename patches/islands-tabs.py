@@ -75,12 +75,16 @@ swap('''openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab
 s = re.sub(r'\n *\.on_scroll_wheel\(e => \{[^\n]*run\(e\.delta\.y > 0 \? "tab\.prev" : "tab\.next"\);? \}\)', '', s, count=1)
 if 'run(e.delta.y > 0 ? "tab.prev"' in s: sys.exit("islands-tabs patch: upstream changed the wheel handler")
 
-# 7. «План» (mods/propeller-plan): a pill for the side panel's plan block, shown when the space on
-#    screen has a Перрі plan (that mod sets shared "propeller.planFor" to the space's id).
+# 7. «План» (mods/propeller-plan): a pill for the side panel's plan block, in every space (a space
+#    without a plan says how to start one). Not only where a plan exists: the plan mod runs only
+#    while the panel is open, so it couldn't tell the bar beforehand (23.11).
 swap('''const enabled = shared("workspace.panels") ?? ["files", "changes"];''',
      '''const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), "plan"];''')
 swap('''        .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))''',
      '''        .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
-        .when(Boolean(space) && shared("propeller.planFor") === space.id, el => el.child(panelButton("plan", "План", "mods/propeller-art/list-checks.svg")))''')
+        .child(actionPill("tab-plan", svg("mods/propeller-art/list-checks.svg").size(15), () => {
+          if (panel && !panel.hidden && body?.active === "plan") run("layout.hide", { id: "panel" });
+          else { run("layout.select", { stack: "panel-body", child: "plan" }); run("layout.show", { id: "panel" }); }
+        }, Boolean(panel && !panel.hidden && body?.active === "plan")))''')
 
 open(path, "w").write(s)
