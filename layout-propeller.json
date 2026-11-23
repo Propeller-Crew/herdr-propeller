@@ -158,6 +158,13 @@
                       "content": {
                         "mod": "changes"
                       }
+                    },
+                    {
+                      "id": "plan",
+                      "type": "block",
+                      "content": {
+                        "mod": "propeller-plan"
+                      }
                     }
                   ],
                   "active": "files"

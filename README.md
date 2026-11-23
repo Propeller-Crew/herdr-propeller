@@ -40,6 +40,12 @@ workspace app. Built as Herdr mods and config, not a fork, so Herdr's updates ke
   `~/.local/bin` on the server). The request shows in «Чекає на тебе»; a click opens a Mac tab with
   Claude and the brief (right-click declines), and its answer goes back to the asking terminal.
   Nothing runs on the Mac without that click.
+- **«План», the space's plan beside the panes.** Перрі keeps the plan of his space in Propeller Tasks
+  (a board with «Чекає на тебе», «В роботі», «На рев'ю», «Готово») and labels his terminal
+  `propeller.plan=<project id>`; the «План» pill in the tab bar opens it in the side panel. A task
+  opens in place with its comments and a field: the comment goes into the task and to Перрі, so the
+  talk about one task stays in its card. Needs `~/.config/herdr-app/data/plan-auth-header`
+  (`Authorization: Bearer <token>`, 600) with a Propeller Tasks token (read, write).
 
 The interface is in Ukrainian.
 

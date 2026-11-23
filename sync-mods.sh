@@ -30,6 +30,7 @@ link() { ln -sfn "$1" "$APP/mods/$(basename "$1")"; }
 copy() { d="$APP/mods/$(basename "$1")"; [ -L "$d" ] && rm "$d"; mkdir -p "$d"; rsync -a --delete --exclude jsconfig.json --exclude "*.d.ts" "$1/" "$d/"; }
 link "$HERE/mods/propeller"
 link "$HERE/mods/propeller-agents"
+link "$HERE/mods/propeller-plan"
 # The picker shares the propeller mod's palette (a mod may import only its own files).
 cp "$HERE/mods/propeller/palette.js" "$HERE/mods/propeller-colors/palette.js"
 link "$HERE/mods/propeller-colors"
