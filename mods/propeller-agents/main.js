@@ -571,10 +571,13 @@ export default class PropellerAgents extends View {
       .flatMap(([m, d]) => Object.entries(d?.of ?? {}).filter(([, f]) => f === SLEEP).map(([id]) => `${m}|${id}`)));
     const byProfile = Object.fromEntries(PROFILES.map((p) => [p.id, Object.fromEntries(SECTIONS.map((x) => [x.id, []]))]));
     // Opening a space of the other profile (a key, a notification) switches the sidebar to it.
+    // A server space nested under one here goes by that space's profile, not its own folder
+    // (24.11: «Розбір треків» under «Bloom-мелодія» flipped the sidebar to «Робоче»).
     const active = spaces().find((s) => s.active);
     if (active && active.id !== this.lastActive) {
       this.lastActive = active.id;
-      if (profileOf(active) !== this.profile) this.setProfile(profileOf(active));
+      const home = (active.machine && spaces().find((x) => x.id === this.nest[active.id])) || active;
+      if (profileOf(home) !== this.profile) this.setProfile(profileOf(home));
     }
     const everywhere = Object.fromEntries(SECTIONS.map((x) => [x.id, []]));
     const ids = new Set(spaces().map((s) => s.id));
