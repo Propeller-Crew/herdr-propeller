@@ -1,0 +1,25 @@
+#!/bin/sh
+# herdr-tab [--model sonnet] "Назва вкладки" < бриф.md — для Claude на сервері: відкрити воркера
+# видимою вкладкою Herdr у твоєму ж серверному просторі (команд вкладок тут нема, вони в Herdr на Маку).
+# Herdr на Маку підхоплює запит сам, без кліку Артема (до ~30 с), відкриває вкладку з Claude і брифом
+# у поточній папці, ставить мітку propeller.parent на тебе й відповідає сюди адресою нового термінала:
+# далі `hc wait <t>`, `hc read <t>`. Бриф самодостатній: що зробити, критерій «готово», куди звітувати.
+set -eu
+model=""
+if [ "${1:-}" = "--model" ]; then model="$2"; shift 2; fi
+[ $# -ge 1 ] || { echo 'usage: herdr-tab [--model sonnet] "Назва вкладки" < бриф.md' >&2; exit 2; }
+[ -n "${HC_TERMINAL_ID:-}" ] || { echo 'herdr-tab: нема HC_TERMINAL_ID — запускай із сесії у вкладці Herdr' >&2; exit 2; }
+mkdir -p "$HOME/mac-inbox/briefs"
+id=$(date -u +%Y%m%d-%H%M%S)-$$
+TITLE="$1" ID="$id" MODEL="$model" python3 -c '
+import json, os, sys
+brief = sys.stdin.read().strip()
+if not brief: sys.exit("бриф порожній: передай його через stdin")
+home, rid = os.path.expanduser("~"), os.environ["ID"]
+open(home + "/mac-inbox/briefs/" + rid + ".md", "w").write(brief)
+d = {"id": os.environ["ID"], "action": "tab", "title": os.environ["TITLE"], "model": os.environ["MODEL"],
+     "brief": "", "terminal": os.environ["HC_TERMINAL_ID"], "cwd": os.getcwd()}
+p = home + "/mac-inbox/" + rid + ".json"
+open(p + ".tmp", "w").write(json.dumps(d, ensure_ascii=False)); os.replace(p + ".tmp", p)
+'
+echo "запит $id: Herdr на Маку відкриє вкладку «$1» (до ~30 с) і пришле сюди адресу її термінала."

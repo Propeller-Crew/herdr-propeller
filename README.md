@@ -40,6 +40,11 @@ workspace app. Built as Herdr mods and config, not a fork, so Herdr's updates ke
   `~/.local/bin` on the server). The request shows in «Чекає на тебе»; a click opens a Mac tab with
   Claude and the brief (right-click declines), and its answer goes back to the asking terminal.
   Nothing runs on the Mac without that click.
+- **A server Claude can open worker tabs.** Tab commands live in the Mac app, so a Claude on the
+  server runs `herdr-tab [--model sonnet] "Tab name" < brief.md` (`bin/herdr-tab`, also in
+  `~/.local/bin` there). Within ~30 s the Mac opens that tab in the asker's own server space, with
+  Claude and the brief, labels it as the asker's worker and sends back its terminal address. It
+  runs on the server, so no click is needed.
 - **«План», the space's plan beside the panes.** Перрі keeps the plan of his space in Propeller Tasks
   (a board with «Чекає на тебе», «В роботі», «На рев'ю», «Готово») and labels his terminal
   `propeller.plan=<project id>`; the «План» pill in the tab bar opens it in the side panel. A task

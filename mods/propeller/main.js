@@ -637,7 +637,11 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
       }
     }
     for (const a of asks) a.space = a.workspace ? macSpaceFor(a.workspace)?.id ?? null : null;
-    this.asks = asks;
+    // A worker tab for a Claude on the server (bin/herdr-tab) opens at once: it runs there, in the
+    // asker's own server space, so there's nothing for Artem to approve (24.11: the server has no
+    // herdr-app, so its Claudes could only start hidden `hc run --bg` workers).
+    for (const a of asks.filter((x) => x.action === "tab")) await this.tabAsk(a).catch((e) => console.log("tab ask:", e?.message ?? e));
+    this.asks = asks.filter((x) => x.action !== "tab");
     const pub = asks.map(({ brief, ...a }) => a);
     if (JSON.stringify(pub) !== JSON.stringify(shared("propeller.macAsks") ?? [])) setShared("propeller.macAsks", pub);
   }
@@ -704,6 +708,30 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
     ].join("\n"));
     run("tab.new", { space: space.id, name: a.title, folder: space.folder || home(), argv: ["/bin/zsh", "-ic", `${CLEAN_ENV} claude "$(cat '${file}')"`] });
     await this.dropAsk(a, "taken");
+  }
+
+  // bin/herdr-tab on a server: a new tab in the asker's server space with Claude and the brief
+  // (saved there as ~/mac-inbox/briefs/<id>.md), labelled as the asker's worker. The asker hears
+  // the new terminal's address, to `hc wait` on it.
+  async tabAsk(a) {
+    const from = a.terminal ? `${a.machine}/${a.terminal}` : null;
+    const pane = from && panes().find((p) => p.terminal === from);
+    const space = pane && spaces().find((s) => s.tabs.some((t) => t.id === pane.tab));
+    const done = async (text) => { if (from) await send(from, `Від Herdr на Маку: ${text}`).catch(() => null); await this.dropAsk(a, "taken"); };
+    if (!space) return done(`вкладку «${a.title}» не відкрито: твій термінал не стоїть у вкладці Herdr (фоновий?). Відкривай воркерів із сесії, що має свою вкладку.`);
+    const before = new Set(panes().map((p) => p.terminal).filter(Boolean));
+    const model = /^[\w.-]+$/.test(a.model ?? "") ? ` --model ${a.model}` : "";
+    run("tab.new", { space: space.id, name: a.title, folder: a.cwd || space.folder, focus: false,
+      argv: ["bash", "-lc", `claude${model} "$(cat "$HOME/mac-inbox/briefs/${a.id}.md")"`] });
+    let made = null;
+    for (let i = 0; i < 40 && !made; i++) {
+      await exec("sleep", ["0.25"]).catch(() => null); // no cx in tick()
+      made = panes().find((p) => p.terminal && !before.has(p.terminal) && p.terminal.startsWith(`${a.machine}/`));
+    }
+    if (!made) return done(`вкладку «${a.title}» попросив відкрити, але її термінала не видно. Глянь \`hc ls\`.`);
+    const t = made.terminal.slice(a.machine.length + 1);
+    await exec("sh", ["-c", '"$HOME/.local/bin/hc" label "$1" "propeller.parent=$2"', "sh", t, a.terminal], { on: a.machine, timeout: 8000 }).catch(() => null);
+    return done(`вкладку «${a.title}» відкрито, термінал ${t} (мітка propeller.parent на тебе). Стеж через \`hc wait ${t}\`.`);
   }
 
   // «Закрити вкладки» from a server Перрі (mac-ask --close-tabs): only tabs of the Mac space its
