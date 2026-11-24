@@ -582,6 +582,19 @@ export default class PropellerAgents extends View {
     const everywhere = Object.fromEntries(SECTIONS.map((x) => [x.id, []]));
     const ids = new Set(spaces().map((s) => s.id));
     this.kids = new Map();
+    // Closing the Mac half (its last tab) leaves the server half as a project of its own, in the
+    // profile the Mac half had (24.11: closing «Bloom-мелодія» dropped «Розбір треків» into «Робоче»).
+    this.nestProfile ??= {};
+    for (const s of spaces()) {
+      const p = this.nest[s.id];
+      if (!s.machine || !p) continue;
+      const parent = spaces().find((x) => x.id === p);
+      if (parent) { this.nestProfile[s.id] = profileOf(parent); continue; }
+      const was = this.nestProfile[s.id];
+      if (!was) continue; // not seen together this run: maybe the Mac half isn't loaded yet
+      const { [s.id]: _, ...rest } = this.nest; this.nest = rest; this.saveNest();
+      setShared("propeller.profile", { ...(shared("propeller.profile") ?? {}), [s.id]: was });
+    }
     for (const s of spaces()) {
       const p = this.nest[s.id];
       if (!s.machine || !p || !ids.has(p)) continue;
