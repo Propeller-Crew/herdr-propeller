@@ -93,6 +93,12 @@ function bossTabs() {
     const boss = tabOf.get(p && m && !p.includes("/") ? `${m}/${p}` : p);
     if (boss && boss !== own) out.add(boss);
   }
+  // A worker that opened workers of its own is still a worker: Перрі is the one at the top
+  // (25.11: «Snowfall», a worker of «Снігопад», got a Перрі icon for its «Snowfall · дизайн»).
+  for (const t of terminals()) {
+    const own = tabOf.get(t.address);
+    if (own && t.state === "live" && t.labels?.["propeller.parent"] && t.labels?.["propeller.role"] !== "orchestrator") out.delete(own);
+  }
   return out;
 }
 

@@ -62,6 +62,7 @@ swap('''    const item = (c, i) => {''', '''    const tabOf = new Map(panes().fi
       if (own && x.labels?.["propeller.role"] === "orchestrator") bosses.add(own);
       if (boss && boss !== own) bosses.add(boss);
     }
+    for (const x of terminals()) { const own = tabOf.get(x.address); if (own && x.state === "live" && x.labels?.["propeller.parent"] && x.labels?.["propeller.role"] !== "orchestrator") bosses.delete(own); } // a worker's worker doesn't make it Перрі
     const item = (c, i) => {''')
 swap('''.child(div().max_w(200).truncate()''', '''.when(bosses.has(c.id), el => el.child(image("mods/propeller-art/perry.png").size(16).flex_none()))
         .child(div().max_w(200).truncate()''')
