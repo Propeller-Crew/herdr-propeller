@@ -56,7 +56,8 @@ export default class PropellerPlan extends View {
     this.err = null;
     this.open = null;      // expanded task id
     this.comments = {};    // task id -> comments
-    this.unfolded = {};    // section name -> true once opened by hand
+    // section name -> folded (true) or open (false), chosen by hand; kept across restarts
+    try { this.unfolded = JSON.parse(localStorage.getItem("folds") ?? "{}") ?? {}; } catch { this.unfolded = {}; }
     this.view = "plan";    // "plan": the queue; "report": what got done (project comments + «Готово»)
     this.sending = false;
     this.input = InputState.new({ placeholder: "Коментар у картку (Enter — надіслати)" });
@@ -237,10 +238,16 @@ export default class PropellerPlan extends View {
     for (const name of names) {
       const list = groups.get(name).sort((a, b) => (a.child_order ?? 0) - (b.child_order ?? 0));
       const color = COLOR[name] ?? t.dim;
-      const foldable = name !== "Чекає на тебе" && (FOLD.test(name) || groups.get(name).length > 12);
-      const folded = foldable && !this.unfolded[name];
+      // Every section folds by hand (26.11: «Невідтворені» and below in NotchAlert couldn't);
+      // long ones (backlog, ideas, done, over 12) start folded.
+      const foldable = true;
+      const folded = this.unfolded[name] ?? (name !== "Чекає на тебе" && (FOLD.test(name) || list.length > 12));
       rows.push(h_flex().id(`sec-${name}`).flex_none().mt(8).mb(2).px(4).gap(6).items_center()
-        .when(foldable, (el) => el.cursor_pointer().on_click((_e, cx) => { this.unfolded = { ...this.unfolded, [name]: !this.unfolded[name] }; cx.notify(); }))
+        .cursor_pointer().on_click((_e, cx) => {
+          this.unfolded = { ...this.unfolded, [name]: !folded };
+          try { localStorage.setItem("folds", JSON.stringify(this.unfolded)); } catch {}
+          cx.notify();
+        })
         .child(h_flex().gap(5).px(9).py(3).rounded(11).bg(color + "33").items_center()
           .child(div().text_size(12).font_semibold().text_color(color).child(name))
           .child(div().text_size(11).font_bold().text_color(color).opacity(0.7).child(String(list.length))))
