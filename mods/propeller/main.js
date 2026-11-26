@@ -209,9 +209,24 @@ export default class Propeller extends View {
 
   async readLimits() {
     await this.readConfig();
-    try {
-      this.limits = JSON.parse(await fs.readFile(`${home()}/.claude/rate-limits.json`, "utf8"));
-    } catch { this.limits = null; }
+    // The account's limits as the freshest Claude saw them: this Mac's statusline file, or that of a
+    // machine (the server) where Claudes work too. Only the Mac's made the card show 29% for hours
+    // while the server's sessions had used 67% (26.11).
+    const found = [];
+    const r = await exec("/usr/bin/stat", ["-f", "%m", `${home()}/.claude/rate-limits.json`]).catch(() => null);
+    try { found.push({ at: Number(r?.stdout.trim()) || 0, d: JSON.parse(await fs.readFile(`${home()}/.claude/rate-limits.json`, "utf8")) }); } catch {}
+    if (Date.now() - (this.remoteLimitsAt ?? 0) > 60000) {
+      this.remoteLimitsAt = Date.now();
+      this.remoteLimits = [];
+      for (const m of new Set(spaces().map((s) => s.machine).filter(Boolean))) {
+        const x = await exec("sh", ["-c", 'f="$HOME/.claude/rate-limits.json"; [ -f "$f" ] && stat -c %Y "$f" && cat "$f"; true'], { on: m, timeout: 8000 }).catch(() => null);
+        const [at, ...rest] = (x?.stdout ?? "").split("\n");
+        try { this.remoteLimits.push({ at: Number(at) || 0, d: JSON.parse(rest.join("\n")) }); } catch {}
+      }
+    }
+    found.push(...(this.remoteLimits ?? []));
+    found.sort((a, b) => b.at - a.at);
+    this.limits = found[0]?.d ?? null;
   }
 
   async tick() {
