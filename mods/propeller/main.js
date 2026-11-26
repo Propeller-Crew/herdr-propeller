@@ -656,8 +656,8 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
     // asker's own server space, so there's nothing for Artem to approve (24.11: the server has no
     // herdr-app, so its Claudes could only start hidden `hc run --bg` workers).
     for (const a of asks.filter((x) => x.action === "tab")) await this.tabAsk(a).catch((e) => console.log("tab ask:", e?.message ?? e));
-    this.asks = asks.filter((x) => x.action !== "tab");
-    const pub = asks.map(({ brief, ...a }) => a);
+    this.asks = asks.filter((x) => x.action !== "tab" && !this.taken?.has(`${x.machine}|${x.id}`));
+    const pub = this.asks.map(({ brief, ...a }) => a);
     if (JSON.stringify(pub) !== JSON.stringify(shared("propeller.macAsks") ?? [])) setShared("propeller.macAsks", pub);
   }
 
@@ -669,7 +669,10 @@ ${todo.map((t) => JSON.stringify(t)).join("\n")}`;
 
   async takeAsk(ref, cx) {
     const a = (this.asks ?? []).find((x) => x.id === ref.id && x.machine === ref.machine);
-    if (!a) return;
+    this.taken ??= new Set();
+    if (!a || this.taken.has(`${a.machine}|${a.id}`)) return;
+    this.taken.add(`${a.machine}|${a.id}`); // a second click, or a re-read before the ssh move lands, must not open it twice
+    setShared("propeller.macAsks", (shared("propeller.macAsks") ?? []).filter((x) => !(x.id === a.id && x.machine === a.machine)));
     if (a.action === "close-tabs") return this.closeTabsAsk(a);
     const own = a.workspace ? macSpaceFor(a.workspace) : null;
     if (own) return this.workspaceAsk(a, own);

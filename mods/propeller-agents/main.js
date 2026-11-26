@@ -454,12 +454,19 @@ export default class PropellerAgents extends View {
     return h_flex().id(`ask-${a.machine}-${a.id}`).h(30).flex_none().px(8).gap(8).items_center().rounded(8)
       .when(under, (el) => el.ml(18))
       .bg("#F5A52414").hover((x) => x.bg("#F5A52430"))
-      .on_click(() => setShared("propeller.macAsk.take", { id: a.id, machine: a.machine, at: Date.now() }))
+      // Shown as taken at once: opening it goes over ssh and took seconds, so it looked unclicked (26.11).
+      .on_click((_e, cx) => {
+        if (this.taking?.[a.id]) return;
+        this.taking = { ...this.taking, [a.id]: Date.now() };
+        setShared("propeller.macAsk.take", { id: a.id, machine: a.machine, at: Date.now() });
+        cx.notify();
+      })
+      .when(Boolean(this.taking?.[a.id]), (el) => el.opacity(0.5))
       .on_mouse_down("right", () => setShared("propeller.macAsk.decline", { id: a.id, machine: a.machine, at: Date.now() }))
       .child(h_flex().size(18).flex_none().rounded(5).bg("#F5A52433").items_center().justify_center()
         .child(svg(`${ART}/laptop.svg`).size(12).text_color("#F5A524")))
       .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(under ? a.title : `Мак: ${a.title}`))
-      .child(div().flex_none().text_size(11.5).text_color("#F5A524").child(ago(since)))
+      .child(div().flex_none().text_size(11.5).text_color("#F5A524").child(this.taking?.[a.id] ? "відкриваю…" : ago(since)))
       .child(this.mark("needs", t));
   }
 
