@@ -99,6 +99,11 @@ function bossTabs() {
     const own = tabOf.get(t.address);
     if (own && t.state === "live" && t.labels?.["propeller.parent"] && t.labels?.["propeller.role"] !== "orchestrator") out.delete(own);
   }
+  // One Перрі per space: where a tab is Перрі by hand («Зробити Перрі»), a tab that only opened
+  // a worker of its own is a worker, not a second Перрі (26.11: «Аудит налаштувань» in NotchAlert).
+  const chosen = new Set();
+  for (const t of terminals()) { const own = tabOf.get(t.address); if (own && t.state === "live" && t.labels?.["propeller.role"] === "orchestrator") chosen.add(own); }
+  for (const sp of spaces()) if (sp.tabs.some((x) => chosen.has(x.id))) for (const x of sp.tabs) if (!chosen.has(x.id)) out.delete(x.id);
   return out;
 }
 

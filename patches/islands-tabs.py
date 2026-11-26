@@ -63,6 +63,8 @@ swap('''    const item = (c, i) => {''', '''    const tabOf = new Map(panes().fi
       if (boss && boss !== own) bosses.add(boss);
     }
     for (const x of terminals()) { const own = tabOf.get(x.address); if (own && x.state === "live" && x.labels?.["propeller.parent"] && x.labels?.["propeller.role"] !== "orchestrator") bosses.delete(own); } // a worker's worker doesn't make it Перрі
+    { const chosen = new Set(terminals().filter(x => x.state === "live" && x.labels?.["propeller.role"] === "orchestrator").map(x => tabOf.get(x.address)).filter(Boolean)); // one Перрі per space: the chosen one
+      for (const sp of spaces()) if (sp.tabs.some(x => chosen.has(x.id))) for (const x of sp.tabs) if (!chosen.has(x.id)) bosses.delete(x.id); }
     const item = (c, i) => {''')
 swap('''.child(div().max_w(200).truncate()''', '''.when(bosses.has(c.id), el => el.child(image("mods/propeller-art/perry.png").size(16).flex_none()))
         .child(div().max_w(200).truncate()''')
